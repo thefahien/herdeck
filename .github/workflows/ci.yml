@@ -32,7 +32,7 @@ jobs:
       - run: cargo build --release --locked
 
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15-intel   # Intel pool: Apple-silicon runners were starved for hours (2026-10)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

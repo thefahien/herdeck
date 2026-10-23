@@ -25,7 +25,8 @@ can't express is a small script in any language that prints JSON.
 - One static Rust binary (ratatui). Linux and macOS, x86_64 and arm64. Nothing else to install.
 - Keyboard and mouse: `Tab`/`1`-`9`/click to switch tabs, `j` `k`/wheel/click for rows.
 - Fetching never blocks the UI. A source that fails after working shows its last data as
-  `Stale`; a tab that isn't configured yet shows sample data marked `DEMO`.
+  `Stale`; a tab that isn't set up yet says what to add. herdeck never shows made-up data
+  unless you ask for it with `--demo`.
 - Runs on its own too: `herdeck` in any terminal, `herdeck --once` for plain text.
 
 ## Tab types
@@ -70,13 +71,29 @@ description = "herdeck"
 
 ## Configure
 
-With no config you get a demo deck: your processes and disks (real), plus sample Services,
-GPUs and AI quotas tabs. To build your own:
+### First run
+
+The first time herdeck opens (in herdr or a terminal) there is no deck yet, so it asks
+which tabs you want. It offers only tabs that work right away on your machine (processes,
+disks, docker containers and systemd services if you have them, logs); Processes and Disk
+are ticked. Press Enter and the deck is written to `~/.config/herdeck/tabs.toml`.
+
+Everything else is a tab you add to that file yourself: health checks, Prometheus, a JSON
+API, any command, or your own script (see the tab types below). A tab that is missing a
+setting says what to add instead of showing data.
+
+Without the picker, for scripts and agents:
 
 ```bash
-mkdir -p ~/.config/herdeck
-cp ~/src/herdeck/examples/tabs.toml ~/.config/herdeck/tabs.toml
+herdeck init --list                        # the starter tabs, and which work here
+herdeck init                               # Processes + Disk
+herdeck init --with processes,containers   # or pick them
+herdeck --once                             # check every tab as plain text
 ```
+
+Setting herdeck up with an AI agent: point it at [docs/setup.md](docs/setup.md).
+`herdeck --demo` shows every tab type with sample data, to look around first.
+[examples/tabs.toml](examples/tabs.toml) has one of every tab type with comments.
 
 A tab is a `[[tab]]` table with `name`, `type`, an optional `interval` (seconds) and the
 type's own keys:
@@ -226,7 +243,7 @@ sh scripts/check.sh          # what CI runs: fmt, clippy, tests, build, pty e2e,
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the layout and the release process.
-`python3 scripts/demo-svg.py` re-records `docs/demo.svg` from the demo deck (sample data only).
+`python3 scripts/demo-svg.py` re-records `docs/demo.svg` from `herdeck --demo` (sample data only).
 
 ## License
 

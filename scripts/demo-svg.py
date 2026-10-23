@@ -182,7 +182,7 @@ def record():
            "XDG_CONFIG_HOME": tmp, "HOME": tmp, "LANG": "C.UTF-8"}
     pid, fd = pty.fork()
     if pid == 0:
-        os.execve(BIN, [BIN], env)
+        os.execve(BIN, [BIN, "--demo"], env)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
     screen = Screen()
 

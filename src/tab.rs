@@ -62,7 +62,8 @@ impl Tab {
         let mut src = source.lock().unwrap();
         let now = Instant::now();
         let (result, configured) = if src.configured() { (Some(src.fetch()), true) } else { (None, false) };
-        let demo = if configured { None } else { src.demo() };
+        let demo = if configured || !sources::demo_enabled() { None } else { src.demo() };
+        let hint = if configured { vec![] } else { src.setup_hint() };
         drop(src);
         let mut st = state.lock().unwrap();
         st.fetching = false;
@@ -74,7 +75,21 @@ impl Tab {
                     st.demo = true;
                     st.status = "DEMO (not configured)".into();
                 }
-                None => st.status = "not configured".into(),
+                None => {
+                    st.table = Table {
+                        header: Some(format!(
+                            "Not set up yet. Add this to the tab in {}, then reopen herdeck:",
+                            crate::config::pretty(&crate::config::config_path(None))
+                        )),
+                        columns: vec!["TO DO".into()],
+                        rows: hint
+                            .into_iter()
+                            .map(|l| crate::model::Row::new(vec![crate::model::Cell::text(l)]))
+                            .collect(),
+                        ..Default::default()
+                    };
+                    st.status = "not set up".into();
+                }
             },
             Some(Ok(t)) => {
                 st.demo = t.demo.is_some();
@@ -131,7 +146,7 @@ impl Tab {
             let r = source.lock().unwrap().confirm(&p);
             {
                 let src = source.lock().unwrap();
-                if !src.configured() {
+                if !src.configured() && sources::demo_enabled() {
                     if let Some(t) = src.demo() {
                         state.lock().unwrap().table = t;
                     }

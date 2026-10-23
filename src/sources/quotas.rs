@@ -103,6 +103,13 @@ impl Source for Quotas {
         self.ssh.is_some()
     }
 
+    fn setup_hint(&self) -> Vec<String> {
+        vec![
+            "ssh = \"user@host\"   # where the CLIProxyAPI container runs".into(),
+            "(or HERDECK_CLIPROXY_SSH in ~/.config/herdeck/env)".into(),
+        ]
+    }
+
     fn default_interval(&self) -> f64 {
         60.0
     }

@@ -4,7 +4,7 @@
     [[tab]]
     name = "Weather"
     type = "exec"
-    command = "python3 ~/.config/herdeck/weather.py Toronto"
+    command = "python3 ~/.config/herdeck/weather.py Paris"
     interval = 600
 
 Output format (herdeck rows):
@@ -18,7 +18,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-city = sys.argv[1] if len(sys.argv) > 1 else "Toronto"
+city = sys.argv[1] if len(sys.argv) > 1 else "Paris"
 url = "https://wttr.in/" + urllib.parse.quote(city) + "?format=j1"
 with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "herdeck-example"}), timeout=10) as r:
     data = json.load(r)

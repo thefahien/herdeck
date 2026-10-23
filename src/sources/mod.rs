@@ -3,6 +3,18 @@
 use crate::model::{Row, Table};
 use anyhow::Result;
 use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Set by --demo: unconfigured tabs show sample data instead of setup instructions.
+static DEMO: AtomicBool = AtomicBool::new(false);
+
+pub fn set_demo(on: bool) {
+    DEMO.store(on, Ordering::Relaxed);
+}
+
+pub fn demo_enabled() -> bool {
+    DEMO.load(Ordering::Relaxed)
+}
 
 pub mod command;
 pub mod gpu;
@@ -30,7 +42,11 @@ pub trait Source: Send {
     }
     /// Fetch fresh data. Runs on a background thread; may block or fail.
     fn fetch(&mut self) -> Result<Table>;
-    /// Sample rows shown, marked DEMO, while not configured.
+    /// What to add to tabs.toml, shown while not configured (one line per item).
+    fn setup_hint(&self) -> Vec<String> {
+        vec!["this tab is missing required settings in tabs.toml".into()]
+    }
+    /// Sample rows shown, marked DEMO, while not configured and --demo is on.
     fn demo(&self) -> Option<Table> {
         None
     }
