@@ -47,9 +47,10 @@ jobs:
       - if: contains(matrix.target, 'linux-musl')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: build (build paths remapped so no home directory ends up in the binary)
-        env:
-          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/herdeck --remap-path-prefix=${{ env.HOME }}/.cargo=/cargo
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          export RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$PWD=/herdeck"
+          cargo build --release --locked --target ${{ matrix.target }}
       - name: smoke test
         if: "!(matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin')"
         run: ./target/${{ matrix.target }}/release/herdeck --version
