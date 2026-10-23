@@ -10,7 +10,7 @@ if [ -f .privacy-patterns ]; then
   [ -n "$extra" ] && pat="$pat|$extra"
 fi
 files=$(git ls-files 2>/dev/null || find . -type f -not -path './target/*' -not -path './.git/*')
-hits=$(printf '%s\n' "$files" | grep -v 'scripts/privacy-scan.sh$' | xargs grep -nIE "$pat" 2>/dev/null || true)
+hits=$(printf '%s\n' "$files" | grep -vE '(scripts/privacy-scan.sh|\.privacy-patterns)$' | xargs grep -nIE "$pat" 2>/dev/null || true)
 # compiled files embed build paths (home directories, user names): never commit them
 bins=$(printf '%s\n' "$files" | while read -r f; do
   [ -f "$f" ] || continue

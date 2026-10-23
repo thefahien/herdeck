@@ -15,35 +15,85 @@ import unittest
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 BIN = os.environ.get("HERDECK_BIN") or os.path.join(ROOT, "target", "release", "herdeck")
-ANSI = re.compile(r"\x1b\[[0-9;?<>]*[A-Za-z@`]|\x1b[()][A-Z0-9]|\x1b[=>78]|\x1b\][^\x07]*\x07")
+CSI = re.compile(r"\x1b\[([0-9;?<>]*)([@-~])|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]|\x1b[=>78]")
+
+
+class Screen:
+    """Just enough of a terminal to replay ratatui's output: cursor moves, clears, text.
+    ratatui only redraws changed cells, so the raw byte stream can't be read as text."""
+
+    def __init__(self, cols, rows):
+        self.cols, self.rows = cols, rows
+        self.grid = [[" "] * cols for _ in range(rows)]
+        self.x = self.y = 0
+
+    def feed(self, data):
+        pos = 0
+        for m in CSI.finditer(data):
+            self._text(data[pos:m.start()])
+            pos = m.end()
+            if m.group(2):
+                self._csi(m.group(1), m.group(2))
+        self._text(data[pos:])
+
+    def _text(self, s):
+        for ch in s:
+            if ch == "\r":
+                self.x = 0
+            elif ch == "\n":
+                self.y = min(self.rows - 1, self.y + 1)
+            elif ch >= " ":
+                if 0 <= self.y < self.rows and 0 <= self.x < self.cols:
+                    self.grid[self.y][self.x] = ch
+                self.x += 1
+
+    def _csi(self, params, cmd):
+        nums = [int(p) if p.isdigit() else 0 for p in params.lstrip("?").split(";")] if params else []
+        if cmd in "Hf":
+            self.y = max(0, (nums[0] if nums and nums[0] else 1) - 1)
+            self.x = max(0, (nums[1] if len(nums) > 1 and nums[1] else 1) - 1)
+        elif cmd == "J" and nums[:1] in ([2], [3]):
+            self.grid = [[" "] * self.cols for _ in range(self.rows)]
+        elif cmd == "K":
+            row = self.grid[min(self.y, self.rows - 1)]
+            for i in range(self.x, self.cols):
+                row[i] = " "
+        elif cmd == "G":
+            self.x = max(0, (nums[0] if nums else 1) - 1)
+
+    def text(self):
+        return "\n".join("".join(r).rstrip() for r in self.grid)
 
 
 def run(keys, cols=110, rows=26, settle=1.2):
+    """Start herdeck on the demo deck, send keys; returns (final screen, screen after
+    each key, exited)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("HERDECK")}
     env.update(TERM="xterm-256color", XDG_CONFIG_HOME="/nonexistent-herdeck", HOME="/nonexistent-herdeck")
     pid, fd = pty.fork()
     if pid == 0:
         os.execve(BIN, [BIN], env)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-    out = bytearray()
+    screen = Screen(cols, rows)
+    raw = bytearray()
 
     def drain(seconds):
         end = time.time() + seconds
         while time.time() < end:
             if select.select([fd], [], [], 0.05)[0]:
                 try:
-                    out.extend(os.read(fd, 65536))
+                    chunk = os.read(fd, 65536)
                 except OSError:
                     return
+                raw.extend(chunk)
+                screen.feed(chunk.decode(errors="replace"))
 
     drain(settle)
     screens = []
     for key, wait in keys:
-        mark = len(out)
         os.write(fd, key)
         drain(wait)
-        # ratatui moves the cursor instead of printing spaces, so compare without them
-        screens.append(re.sub(r"\s+", "", ANSI.sub("", out[mark:].decode(errors="replace"))))
+        screens.append(screen.text())
     exited = False
     for _ in range(40):
         if os.waitpid(pid, os.WNOHANG)[0]:
@@ -53,7 +103,8 @@ def run(keys, cols=110, rows=26, settle=1.2):
     if not exited:
         os.kill(pid, signal.SIGKILL)
         os.waitpid(pid, 0)
-    return re.sub(r"\s+", "", ANSI.sub("", out.decode(errors="replace"))), screens, exited
+    full = raw.decode(errors="replace")
+    return full, screens, exited
 
 
 def click(x, y):  # SGR mouse report, 1-based coordinates
@@ -62,12 +113,12 @@ def click(x, y):  # SGR mouse report, 1-based coordinates
 
 class E2E(unittest.TestCase):
     def test_keys_switch_tabs_and_quit(self):
-        full, s, exited = run([(b"2", 0.8), (b"3", 0.8), (b"\t", 0.8), (b"q", 0.5)])
-        self.assertIn("●1:Processes", full)
+        full, s, exited = run([(b"", 0.1), (b"2", 0.8), (b"3", 0.8), (b"\t", 0.8), (b"q", 0.5)])
+        self.assertIn("●1:Processes", s.pop(0))
         self.assertIn("●2:Disk", s[0])
         self.assertIn("●3:Services", s[1])
         self.assertIn("●4:GPUs", s[2])
-        self.assertIn("DEMO", full)
+        self.assertIn("DEMO", s[1])  # Services is sample data until configured
         self.assertNotIn("panicked", full)
         self.assertTrue(exited, "q did not quit")
 
@@ -80,14 +131,16 @@ class E2E(unittest.TestCase):
 
     def test_lane_prompt_is_modal_and_confirms_in_demo(self):
         _, s, exited = run([(b"4", 0.8), (b"s", 0.6), (b"2", 0.4), (b"y", 1.2), (b"q", 0.5)])
-        self.assertIn("Switchlane", s[1])
-        self.assertNotIn("●2:Disk", s[2])  # digits go to the prompt while it is open
-        self.assertIn("LLM●", s[3])  # the demo card moved to the next lane
+        self.assertIn("Switch lane", s[1])
+        self.assertIn("Switch lane", s[2])  # digits go to the prompt while it is open
+        self.assertNotIn("●2:Disk", s[2])
+        self.assertIn("LLM ●", s[3])  # the demo card moved to the next lane
         self.assertTrue(exited)
 
     def test_help_overlay(self):
         _, s, exited = run([(b"?", 0.6), (b"x", 0.5), (b"q", 0.5)])
-        self.assertIn("next/previoustab", s[0])
+        self.assertIn("next / previous tab", s[0])
+        self.assertNotIn("next / previous tab", s[1])  # any key closes help
         self.assertTrue(exited)
 
     def test_small_terminals_do_not_crash(self):
