@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - First run: with no deck, herdeck asks which starter tabs you want (only ones that work
   on this machine; Processes and Disk ticked) and writes `~/.config/herdeck/tabs.toml`.
@@ -11,7 +11,8 @@
 - `docs/setup.md`: step-by-step setup, written so an AI agent can follow it.
 - Section titles span the whole row instead of being cut at the first column's width.
 - README demo (`docs/demo.svg`, recorded by `scripts/demo-svg.py`).
-- CI: macOS tests run on Intel Mac runners.
+- CI and release: macOS jobs run on Intel Mac runners (the Apple-silicon binary is
+  cross-compiled there).
 - Piping plain-text output (`--once`, `init --list`, `--types`) into `head` no longer panics.
 - Release binaries no longer contain the build machine's paths.
 
