@@ -36,8 +36,10 @@ jobs:
         include:
           - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
           - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
-          - { os: macos-latest, target: aarch64-apple-darwin }
-          - { os: macos-latest, target: x86_64-apple-darwin }
+          # Intel runners: GitHub's Apple-silicon pool can be starved for hours;
+          # the arm64 binary cross-compiles fine here
+          - { os: macos-15-intel, target: aarch64-apple-darwin }
+          - { os: macos-15-intel, target: x86_64-apple-darwin }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +54,7 @@ jobs:
           export RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$PWD=/herdeck"
           cargo build --release --locked --target ${{ matrix.target }}
       - name: smoke test
-        if: "!(matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin')"
+        if: matrix.target != 'aarch64-apple-darwin'   # an Intel Mac can't run the arm64 binary
         run: ./target/${{ matrix.target }}/release/herdeck --version
       - name: package
         run: |
