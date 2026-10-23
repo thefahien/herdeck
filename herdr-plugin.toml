@@ -2,7 +2,7 @@
 id = "herdeck"
 name = "herdeck"
 version = "0.1.0"
-description = "Tabbed terminal dashboards (GPUs, CPU nodes, AI subscription quotas) inside herdr."
+description = "Turn any command, process list, health check, JSON API or Prometheus query into a tab in a herdr pane."
 min_herdr_version = "0.9.0"
 platforms = ["linux", "macos"]
 

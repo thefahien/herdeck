@@ -1,48 +1,40 @@
 import argparse
 import sys
 
+from herdeck import __version__
 from herdeck.app import DashboardApp
-from herdeck.views.gpu import GPUView
-from herdeck.views.cpu import CPUView
-from herdeck.views.cliproxy import CLIProxyView
+from herdeck.config import known_types, load
 
 
 def main():
-    parser = argparse.ArgumentParser(description="herdeck: tabbed terminal dashboards for herdr")
-    parser.add_argument("--once", action="store_true", help="Print snapshot table and exit")
-    parser.add_argument("--tab", default="1", help="Tab to open by default (1: GPUs, 2: CPU, 3: Proxy, or name)")
-    parser.add_argument("--interval", type=float, default=2.0, help="Refresh interval in seconds (default: 2.0)")
+    p = argparse.ArgumentParser(prog="herdeck", description="herdeck: tabbed terminal dashboards for herdr")
+    p.add_argument("--config", help="tabs.toml to use (default: ~/.config/herdeck/tabs.toml)")
+    p.add_argument("--once", action="store_true", help="print every tab once and exit")
+    p.add_argument("--tab", default="1", help="tab to start on: number or name")
+    p.add_argument("--types", action="store_true", help="list tab types and exit")
+    p.add_argument("--version", action="version", version=f"herdeck {__version__}")
+    args = p.parse_args()
 
-    args = parser.parse_args()
-
-    gpu_view = GPUView(refresh_interval=args.interval)
-    cpu_view = CPUView(refresh_interval=max(args.interval, 3.0))
-    proxy_view = CLIProxyView(refresh_interval=30.0)
-    views = [gpu_view, cpu_view, proxy_view]
-
-    if args.once or not sys.stdout.isatty():
-        print("================================================================================")
-        gpu_view.print_once()
-        print()
-        print("================================================================================")
-        cpu_view.print_once()
-        print()
-        print("================================================================================")
-        proxy_view.print_once()
-        print("================================================================================")
+    if args.types:
+        print("\n".join(known_types()))
         return
 
-    # Determine default tab
-    default_tab = 0
-    if args.tab in ("3", "proxy", "cliproxy", "quota"):
-        default_tab = 2
-    elif args.tab in ("2", "cpu", "fleet"):
-        default_tab = 1
-    elif args.tab in ("1", "gpu", "gpus"):
-        default_tab = 0
+    views, data, source = load(args.config)
 
-    app = DashboardApp(views=views, refresh_interval=args.interval)
-    app.active_tab = default_tab
+    if args.once or not sys.stdout.isatty():
+        print(f"# herdeck: {source}")
+        for v in views:
+            print()
+            v.print_once()
+        return
+
+    start = 0
+    if args.tab.isdigit():
+        start = max(0, min(len(views) - 1, int(args.tab) - 1))
+    else:
+        start = next((i for i, v in enumerate(views) if v.name.lower() == args.tab.lower()), 0)
+    app = DashboardApp(views=views, refresh_interval=float(data.get("refresh", 1.0)))
+    app.active_tab = start
     app.run()
 
 

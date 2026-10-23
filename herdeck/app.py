@@ -5,17 +5,15 @@ from typing import List, Tuple
 
 from herdeck.common import SafeWin, init_colors
 from herdeck.views.base import BaseView
-from herdeck.views.gpu import GPUView
-from herdeck.views.cpu import CPUView
-from herdeck.views.cliproxy import CLIProxyView
 
 WHEEL_UP = getattr(curses, "BUTTON4_PRESSED", 0x10000)
 WHEEL_DN = getattr(curses, "BUTTON5_PRESSED", 0x200000)
 
 
 class DashboardApp:
-    def __init__(self, views: List[BaseView] = None, refresh_interval: float = 2.0):
-        self.views = views or [GPUView(), CPUView(), CLIProxyView()]
+    def __init__(self, views: List[BaseView], refresh_interval: float = 2.0, title: str = "herdeck"):
+        self.views = views
+        self.title = title
         self.active_tab = 0
         self.interval = refresh_interval
         self.show_help = False
@@ -45,7 +43,7 @@ class DashboardApp:
         stdscr = SafeWin(raw_stdscr)
         init_colors()
         curses.curs_set(0)
-        stdscr.timeout(500)
+        stdscr.timeout(max(100, min(2000, int(self.interval * 1000))))
 
         # Enable mouse support in curses without flood-motion reporting
         try:
@@ -146,26 +144,29 @@ class DashboardApp:
         cur_view = self.views[self.active_tab]
         self.tab_spans = []
 
-        # 1. Top Tab Bar with mouse hitboxes
-        x = 1
-        stdscr.addstr(0, 0, " ", curses.color_pair(1))
-        for idx, v in enumerate(self.views):
-            is_active = (idx == self.active_tab)
-            bullet = "●" if is_active else " "
-            tab_text = f" [{bullet} {idx + 1}: {v.name}] "
-            x_end = x + len(tab_text)
-            if x_end < max_x - 22:
-                pair = curses.color_pair(7) | curses.A_BOLD if is_active else curses.color_pair(1) | curses.A_DIM
-                stdscr.addstr(0, x, tab_text, pair)
-                self.tab_spans.append((x, x_end, idx))
-                x = x_end + 1
-
-        # Clock & refresh on right
+        # 1. Tab bar. If the tabs do not fit, keep the active one in view.
         now_str = time.strftime("%H:%M:%S")
-        status_text = f" ↻{int(self.interval)}s {now_str} "
-        right_x = max(x + 2, max_x - len(status_text) - 1)
-        if right_x < max_x:
-            stdscr.addstr(0, right_x, status_text[:max_x - right_x], curses.color_pair(5))
+        right = f" {now_str} "
+        labels = [f" {i + 1}:{v.name} " if i < 9 else f" {v.name} " for i, v in enumerate(self.views)]
+        room = max_x - len(right) - 2
+        first = 0
+        while first < self.active_tab and sum(len(l) + 1 for l in labels[first:self.active_tab + 1]) + 2 > room:
+            first += 1
+        x = 0
+        if first:
+            stdscr.addstr(0, 0, "‹", curses.color_pair(8))
+            x = 1
+        for idx in range(first, len(self.views)):
+            text = labels[idx]
+            if x + len(text) > room:
+                stdscr.addstr(0, x, "›", curses.color_pair(8))
+                break
+            active = idx == self.active_tab
+            pair = curses.color_pair(7) | curses.A_BOLD if active else curses.color_pair(1)
+            stdscr.addstr(0, x, ("●" + text[1:]) if active else text, pair)
+            self.tab_spans.append((x, x + len(text), idx))
+            x += len(text) + 1
+        stdscr.addstr(0, max_x - len(right) - 1, right, curses.color_pair(5))
 
         stdscr.hline(1, 0, curses.ACS_HLINE, max_x)
 
@@ -173,7 +174,7 @@ class DashboardApp:
         cur_view.draw(stdscr, start_y=2, max_y=max_y - 1, max_x=max_x)
 
         # 3. Global Footer
-        footer = f" Tab/1-{len(self.views)}:switch · click:select · j/k/wheel:scroll · r:refresh · q/Esc:close "
+        footer = " Tab/1-9/click:tabs · j/k/wheel:rows · r:refresh · ?:help · q:close "
         status = f" [{cur_view.get_status()}] "[: max(10, max_x // 2)]
         if max_y - 1 > 0:
             # status wins over the key hints: it carries DEMO / Stale / errors
@@ -194,20 +195,18 @@ class DashboardApp:
         for y in range(start_y, start_y + box_h):
             stdscr.addstr(y, start_x, " " * box_w, curses.color_pair(6))
 
-        stdscr.addstr(start_y, start_x + 2, " HERDECK CONTROLS ", curses.color_pair(6) | curses.A_BOLD)
+        stdscr.addstr(start_y, start_x + 2, " herdeck ", curses.color_pair(6) | curses.A_BOLD)
         lines = [
-            "Mouse Click    : Click tab at top to switch, click row to select",
-            "Mouse Wheel    : Scroll rows up / down",
-            "Tab / ]        : Switch to NEXT dashboard tab",
-            "Shift+Tab / [  : Switch to PREVIOUS dashboard tab",
-            "1 - 9          : Jump directly to a tab",
-            "j / Down       : Select next item / row",
-            "k / Up         : Select previous item / row",
-            "Enter          : Toggle details / processes",
-            "s              : Switch lane of selected GPU (s again = next lane)",
-            "r              : Force refresh current dashboard",
-            "q / Esc        : Close dashboard window",
-            "?              : Close this help",
+            "Tab / ]  Shift+Tab / [   next / previous tab",
+            "1 - 9                    jump to tab",
+            "click a tab / a row      switch tab / select row",
+            "j k, arrows, wheel       move selection",
+            "PgUp PgDn, g G           page, top, bottom",
+            "r                        refresh this tab now",
+            "q / Esc                  close",
+            "",
+            "Tab-specific keys (GPUs): s lane switch, Enter processes",
+            "Tabs come from ~/.config/herdeck/tabs.toml",
         ]
         for idx, line in enumerate(lines):
             stdscr.addstr(start_y + 2 + idx, start_x + 2, line, curses.color_pair(6))

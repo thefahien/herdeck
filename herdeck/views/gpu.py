@@ -17,10 +17,12 @@ GPU_TOKEN = os.environ.get("HERDECK_GPU_TOKEN", "")
 
 class GPUView(BaseView):
     name = "GPUs"
-    key_hint = "1"
 
-    def __init__(self, base_url: str = GPU_URL, refresh_interval: float = 2.0):
-        self.base_url = (base_url or "").rstrip("/")
+    def __init__(self, cfg=None, base_url=None, refresh_interval: float = 2.0):
+        super().__init__(cfg)
+        self.base_url = (base_url if base_url is not None else self.cfg.get("url", GPU_URL) or "").rstrip("/")
+        self.token = self.cfg.get("token", GPU_TOKEN)
+        refresh_interval = float(self.cfg.get("interval", refresh_interval))
         self.interval = refresh_interval
         self.last_fetch = 0.0
         self.last_ok_time = 0.0
@@ -41,12 +43,12 @@ class GPUView(BaseView):
         self.last_fetch = now
 
         if not self.base_url:
-            self._load_demo("HERDECK_GPU_URL not set")
+            self._load_demo("not configured")
             return
         url = f"{self.base_url}/api/state"
         req = urllib.request.Request(url)
         try:
-            with urllib.request.urlopen(req, timeout=2.0, context=self.ctx) as resp:
+            with open_url(req, 2.0, self.ctx) as resp:
                 self.state = json.loads(resp.read().decode())
                 self.last_ok_time = now
                 self.is_demo = False
@@ -289,9 +291,9 @@ class GPUView(BaseView):
             self.status_line = f"Demo: switched {m['gpu_label']} to {m['lane_label']}"
             return
 
-        key = GPU_TOKEN
+        key = self.token
         if not key:
-            self.status_line = "Switch needs HERDECK_GPU_TOKEN"
+            self.status_line = "Switch needs a token (token = ... in tabs.toml)"
             return
         host = urllib.parse.urlparse(self.base_url)
         if host.scheme != "https" and host.hostname not in ("localhost", "127.0.0.1", "::1"):

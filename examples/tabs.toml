@@ -1,0 +1,161 @@
+# herdeck example deck. Copy to ~/.config/herdeck/tabs.toml and edit.
+# Each [[tab]] is one tab; order here = order on screen (keys 1-9).
+# ${NAME} / ${NAME:-default} read environment variables, so secrets can stay in
+# ~/.config/herdeck/env (sourced by the plugin) instead of this file.
+
+refresh = 1          # how often the screen redraws (seconds); each tab has its own fetch interval
+
+# --- local processes, filtered -------------------------------------------------
+[[tab]]
+name = "Processes"
+type = "processes"
+sort = "cpu"         # cpu | mem | pid
+limit = 30
+# match = "python|node|postgres"   # regex on the full command line
+# user = "www-data"
+
+# --- any command: plain lines with highlighting (journalctl: Linux only) -------
+[[tab]]
+name = "Logs"
+type = "command"
+command = "journalctl --user -n 200 --no-pager -o short-iso"
+interval = 5
+highlight = { "error|fail|denied" = "bad", "warn" = "warn", "started|listening" = "ok" }
+
+# --- any command: whitespace table, with a bar on one column --------------------
+[[tab]]
+name = "Disk"
+type = "command"
+command = "df -hP | grep -vE '^(tmpfs|devtmpfs|overlay|squashfs|udev)'"
+format = "table"
+headers = ["Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"]
+interval = 30
+[[tab.column]]
+title = "Use%"
+bar = 100
+width = 8
+
+# --- any command that prints JSON (docker, kubectl, systemctl, gh, ...) --------
+[[tab]]
+name = "Containers"
+type = "command"
+command = "docker ps -a --format '{{json .}}'"
+format = "jsonl"
+interval = 10
+[[tab.column]]
+title = "Name"
+path = "Names"
+[[tab.column]]
+title = "State"
+path = "State"
+ok_values = ["running"]
+bad_values = ["exited", "dead"]
+warn_values = ["restarting", "paused"]
+[[tab.column]]
+title = "Status"
+path = "Status"
+[[tab.column]]
+title = "Image"
+path = "Image"
+
+# --- systemd units as a table (Linux only) ---------------------------------------
+[[tab]]
+name = "Units"
+type = "command"
+command = "systemctl --user list-units --type=service --all --no-pager --plain --no-legend"
+format = "table"
+headers = ["Unit", "Load", "Active", "Sub", "Description"]
+skip_header = false
+[[tab.column]]
+title = "Active"
+ok_values = ["active"]
+bad_values = ["failed"]
+warn_values = ["activating", "deactivating"]
+
+# --- HTTP and TCP health checks ----------------------------------------------------
+[[tab]]
+name = "Services"
+type = "http"
+interval = 15
+[[tab.check]]
+name = "website"
+url = "https://example.com/"
+contains = "Example Domain"
+[[tab.check]]
+name = "api"
+url = "http://localhost:8080/health"
+expect = [200, 204]
+[[tab.check]]
+name = "postgres"
+tcp = "localhost:5432"
+
+# --- any JSON API mapped to columns ------------------------------------------------
+[[tab]]
+name = "Queue"
+type = "json"
+url = "http://localhost:8080/api/jobs"
+headers = { Authorization = "Bearer ${QUEUE_TOKEN}" }
+items = "jobs"                       # dotted path to the list inside the response
+[[tab.column]]
+title = "Job"
+path = "name"
+[[tab.column]]
+title = "Progress"
+path = "progress"                    # 0..1 here, so scale it to percent
+scale = 100
+bar = 100
+[[tab.column]]
+title = "State"
+path = "state"
+ok_values = ["done"]
+bad_values = ["failed"]
+[[tab.column]]
+title = "Retries"
+path = "attempts"
+warn_above = 1
+bad_above = 3
+
+# --- Prometheus: one row per label value, one column per query --------------------
+[[tab]]
+name = "Nodes"
+type = "prometheus"
+url = "${PROMETHEUS_URL:-http://localhost:9090}"
+label = "instance"
+[[tab.metric]]
+title = "CPU"
+query = '100 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100'
+bar = 100
+[[tab.metric]]
+title = "CPU 10m"
+query = '100 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100'
+spark = true
+[[tab.metric]]
+title = "RAM"
+query = '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100'
+bar = 100
+[[tab.metric]]
+title = "Load 1m"
+query = 'node_load1'
+format = "{:.2f}"
+warn_above = 4
+bad_above = 8
+
+# --- richer built-in examples --------------------------------------------------------
+[[tab]]
+name = "GPUs"
+type = "gpu"                         # GET <url>/api/state, format in the README
+url = "${HERDECK_GPU_URL}"
+token = "${HERDECK_GPU_TOKEN}"               # only for lane switching
+
+[[tab]]
+name = "AI quotas"
+type = "ai-quotas"                   # CLIProxyAPI container reached over ssh
+ssh = "${HERDECK_CLIPROXY_SSH}"              # e.g. user@proxy-host
+container = "cli-proxy-api"
+
+# --- your own Python view ------------------------------------------------------------
+[[tab]]
+name = "Weather"
+type = "python"
+path = "~/.config/herdeck/views/weather.py"   # see examples/weather.py
+city = "Toronto"

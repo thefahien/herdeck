@@ -35,11 +35,14 @@ def format_iso_time(iso_str: str) -> str:
 
 
 class CLIProxyView(BaseView):
-    name = "CLI Proxy"
-    key_hint = "3"
+    name = "AI quotas"
 
-    def __init__(self, refresh_interval: float = 30.0):
-        self.interval = refresh_interval
+    def __init__(self, cfg=None, refresh_interval: float = 30.0):
+        super().__init__(cfg)
+        self.interval = float(self.cfg.get("interval", refresh_interval))
+        self.ssh_target = self.cfg.get("ssh", CLIPROXY_SSH)
+        self.container = self.cfg.get("container", CLIPROXY_CONTAINER)
+        self.auth_dir = self.cfg.get("auth_dir", CLIPROXY_AUTH_DIR)
         self.last_fetch = 0.0
         self.last_ok_time = 0.0
         self.is_fetching = False
@@ -70,7 +73,7 @@ class CLIProxyView(BaseView):
 
     def _ssh(self, cmd: str, timeout: int = 8) -> bytes:
         return subprocess.check_output(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=4", "--", CLIPROXY_SSH, cmd],
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=4", "--", self.ssh_target, cmd],
             timeout=timeout, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
 
@@ -78,8 +81,8 @@ class CLIProxyView(BaseView):
         """First auth file named <prefix>-*.json in the proxy's auth dir (inside the container)."""
         if not re.fullmatch(r"[a-z]+", prefix):
             raise ValueError("bad prefix")
-        c = shlex.quote(CLIPROXY_CONTAINER)
-        inner = f"ls -1 {shlex.quote(CLIPROXY_AUTH_DIR)}/{prefix}-*.json 2>/dev/null | head -n1"
+        c = shlex.quote(self.container)
+        inner = f"ls -1 {shlex.quote(self.auth_dir)}/{prefix}-*.json 2>/dev/null | head -n1"
         cmd = f'f=$(docker exec {c} sh -c {shlex.quote(inner)}); [ -n "$f" ] && docker exec {c} cat "$f"'
         auth = json.loads(self._ssh(cmd))
         if not auth.get("access_token"):
@@ -94,8 +97,8 @@ class CLIProxyView(BaseView):
     def _fetch_worker(self):
         self.is_fetching = True
         try:
-            if not CLIPROXY_SSH:
-                self._load_demo("HERDECK_CLIPROXY_SSH not set")
+            if not self.ssh_target:
+                self._load_demo("not configured")
                 return
 
             c_data = {"5h": 0.0, "7d": 0.0, "5h_reset": "", "7d_reset": ""}
@@ -124,7 +127,7 @@ class CLIProxyView(BaseView):
             try:
                 auth = self._read_auth("codex")
                 hdrs = {"Authorization": f"Bearer {auth.get('access_token')}", "Accept": "application/json",
-                        "User-Agent": "Mozilla/5.0"}
+                        "User-Agent": "herdeck"}
                 if auth.get("account_id"):
                     hdrs["chatgpt-account-id"] = auth["account_id"]
                 res = self._get_json("https://chatgpt.com/backend-api/wham/usage", hdrs)
@@ -166,7 +169,7 @@ class CLIProxyView(BaseView):
 
             # 24h traffic from the proxy's own log
             try:
-                raw = self._ssh(f"docker logs --since 24h {shlex.quote(CLIPROXY_CONTAINER)} 2>&1", timeout=15).decode(errors="replace")
+                raw = self._ssh(f"docker logs --since 24h {shlex.quote(self.container)} 2>&1", timeout=15).decode(errors="replace")
                 for ln in raw.splitlines():
                     if "selector.go" in ln and "session-affinity" in ln:
                         mm = re.search(r"model=(\S+)", ln)
@@ -267,7 +270,7 @@ class CLIProxyView(BaseView):
         self._draw_meter_line(
             stdscr,
             y,
-            " (Google Pro)",
+            " (Google)",
             "Cl/GPT",
             ag_other,
             W,
@@ -353,7 +356,7 @@ class CLIProxyView(BaseView):
         print("--------------------------------------------------------------------------------")
         print(f"CLAUDE (5-Hour):     [{make_pbar(self.claude_data.get('5h', 0.0), 100.0, 10)}] {int(self.claude_data.get('5h', 0.0))}% used   {format_iso_time(self.claude_data.get('5h_reset', ''))}")
         print(f"CLAUDE (Weekly):     [{make_pbar(self.claude_data.get('7d', 0.0), 100.0, 10)}] {int(self.claude_data.get('7d', 0.0))}% used   {format_iso_time(self.claude_data.get('7d_reset', ''))}")
-        print(f"CODEX (Plus 5-Hour): [{make_pbar(self.codex_data.get('primary', 0.0), 100.0, 10)}] {int(self.codex_data.get('primary', 0.0))}% used")
+        print(f"CODEX ({self.codex_data.get('plan', '-')} 5-Hour): [{make_pbar(self.codex_data.get('primary', 0.0), 100.0, 10)}] {int(self.codex_data.get('primary', 0.0))}% used")
         print(f"CODEX (Weekly):      [{make_pbar(self.codex_data.get('secondary', 0.0), 100.0, 10)}] {int(self.codex_data.get('secondary', 0.0))}% used")
         print(f"ANTIGRAVITY (Gemini):[{make_pbar(self.agy_data.get('gemini', 0.0), 100.0, 10)}] {int(self.agy_data.get('gemini', 0.0))}% used   {format_iso_time(self.agy_data.get('gemini_reset', ''))}")
         other_ex = "  [EXHAUSTED]" if self.agy_data.get("other", 0.0) >= 99.0 else ""

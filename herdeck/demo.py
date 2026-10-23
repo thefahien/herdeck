@@ -48,30 +48,6 @@ def get_demo_gpus() -> List[Dict[str, Any]]:
     ]
 
 
-def get_demo_nodes(node_names: List[str]) -> Dict[str, Dict[str, Any]]:
-    nodes = {}
-    sample_metrics = [
-        {"cpu": 18.0, "l1": 0.45, "l5": 0.50, "l15": 0.42, "used_g": 6.2, "tot_g": 32.0, "cores": 16, "spark": [10, 12, 15, 20, 18, 18, 18]},
-        {"cpu": 8.0, "l1": 0.20, "l5": 0.18, "l15": 0.15, "used_g": 4.1, "tot_g": 32.0, "cores": 16, "spark": [5, 5, 8, 8, 8, 8, 8]},
-    ]
-    for idx, name in enumerate(node_names):
-        m = sample_metrics[idx % len(sample_metrics)]
-        mem_pct = (m["used_g"] / m["tot_g"]) * 100.0
-        nodes[name] = {
-            "key": name,
-            "cpu_util": m["cpu"],
-            "cores": m["cores"],
-            "load1": m["l1"],
-            "load5": m["l5"],
-            "load15": m["l15"],
-            "mem_used_gb": m["used_g"],
-            "mem_total_gb": m["tot_g"],
-            "mem_pct": mem_pct,
-            "spark": [float(x) for x in m["spark"]],
-        }
-    return nodes
-
-
 def get_demo_cliproxy() -> Dict[str, Any]:
     return {
         "claude": {"5h": 12.0, "7d": 45.0, "5h_reset": "2026-10-23T04:00:00Z", "7d_reset": "2026-10-26T05:00:00Z"},

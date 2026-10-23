@@ -16,8 +16,8 @@ ANSI = re.compile(r"\x1b\[[0-9;?<>]*[A-Za-z]|\x1b[()][A-Z0-9]|\x1b[=>]")
 
 
 def run(keys, cols=110, rows=26):
-    env = {k: v for k, v in os.environ.items() if not k.startswith("HERDECK_")}
-    env.update(TERM="xterm-256color", ESCDELAY="25")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("HERDECK")}
+    env.update(TERM="xterm-256color", ESCDELAY="25", XDG_CONFIG_HOME="/nonexistent-herdeck")
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(ROOT)
@@ -55,23 +55,26 @@ def click(x, y):  # SGR mouse, 1-based
 class TuiE2E(unittest.TestCase):
     def test_keys_switch_tabs_and_quit(self):
         full, s, exited = run([(b"2", 0.8), (b"3", 0.8), (b"\t", 0.8), (b"q", 1.0)])
-        self.assertIn("● 2: Fleet CPU", s[0])
-        self.assertIn("● 3: CLI Proxy", s[1])
-        self.assertIn("● 1: GPUs", s[2])
+        self.assertIn("●2:Disk", s[0])
+        self.assertIn("●3:Services", s[1])
+        self.assertIn("●4:GPUs", s[2])
         self.assertIn("DEMO", full)
+        self.assertIn("●1:Processes", full)
         self.assertNotIn("Traceback", full)
         self.assertTrue(exited, "q did not quit")
 
     def test_mouse_clicks_tabs(self):
-        _, s, exited = run([(click(45, 1), 0.8), (click(25, 1), 0.8), (b"\x1b", 1.0)])
-        self.assertIn("● 3: CLI Proxy", s[0])
-        self.assertIn("● 2: Fleet CPU", s[1])
+        # tab bar: " 1:Processes " (0-12) " 2:Disk " (14-21) " 3:Services " (23-34) ...
+        _, s, exited = run([(click(28, 1), 0.8), (click(17, 1), 0.8), (b"\x1b", 1.0)])
+        self.assertIn("●3:Services", s[0])
+        self.assertIn("●2:Disk", s[1])
         self.assertTrue(exited, "Esc did not quit")
 
     def test_lane_prompt_is_modal_and_cancellable(self):
-        _, s, exited = run([(b"s", 0.6), (b"2", 0.4), (b"q", 0.6), (b"q", 1.0)])
+        _, s, exited = run([(b"4", 0.8), (b"s", 0.6), (b"2", 0.4), (b"q", 0.6), (b"q", 1.0)])
+        s = s[1:]
         self.assertIn("CONFIRM LANE SWITCH", s[0])
-        self.assertNotIn("● 2: Fleet CPU", s[1])  # digits are swallowed while the prompt is open
+        self.assertNotIn("●2:Disk", s[1])  # digits are swallowed while the prompt is open
         self.assertIn("cancelled", s[2])
         self.assertTrue(exited)
 

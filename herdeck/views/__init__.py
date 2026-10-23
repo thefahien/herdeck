@@ -1,6 +1,3 @@
-from herdeck.views.base import BaseView
-from herdeck.views.gpu import GPUView
-from herdeck.views.cpu import CPUView
-from herdeck.views.cliproxy import CLIProxyView
+from herdeck.views.base import Bar, BaseView, Spark, TableView, Text
 
-__all__ = ["BaseView", "GPUView", "CPUView", "CLIProxyView"]
+__all__ = ["BaseView", "TableView", "Bar", "Spark", "Text"]

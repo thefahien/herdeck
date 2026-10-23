@@ -1,19 +1,47 @@
 # herdeck
 
-Tabbed terminal dashboards for [herdr](https://herdr.dev). One hotkey opens a popup;
-switch tabs with `Tab`, the number keys, or a mouse click.
+**A small framework for putting live service views into a [herdr](https://herdr.dev) pane.**
+One hotkey opens a tabbed popup; every tab is declared in a TOML file. Point a tab at a
+command, your processes, a set of health checks, any JSON API or a Prometheus query and it
+becomes a scrollable, colour-coded table that refreshes in the background. Anything those
+can't express is a 20-line Python class.
 
-| Tab | Shows | Source |
+```
+●1:Processes   2:Disk   3:Services   4:Containers   5:Nodes   6:GPUs   7:AI quotas   12:04:51
+──────────────────────────────────────────────────────────────────────────────────────────────
+ 3/4 up
+ SERVICE    STATE  CODE  LATENCY  TREND       TARGET
+ website    UP     200   38 ms    ▃▄▃▅▃▄      https://example.com/
+ api        UP     200   12 ms    ▂▂▃▂▂▂      http://localhost:8080/health
+ worker     DOWN   503   120 ms   ▅▆█▇▆█      http://localhost:9000/ready
+ postgres   UP     tcp   1 ms     ▁▁▁▁▁▁      localhost:5432
+──────────────────────────────────────────────────────────────────────────────────────────────
+ expected 200
+ Tab/1-9/click:tabs · j/k/wheel:rows · r:refresh · ?:help · q:close                   [OK]
+```
+
+- Pure Python standard library (curses, urllib, tomllib). Python 3.11+, Linux or macOS.
+- Keyboard and mouse: `Tab`/`1`-`9`/click to switch tabs, `j` `k`/wheel/click for rows.
+- Fetching never blocks the UI. A source that fails after working shows its last data as
+  `Stale`; a tab that isn't configured yet shows sample data marked `DEMO`.
+- Runs on its own too: `bin/herdeck` in any terminal, `bin/herdeck --once` for plain text.
+
+## Tab types
+
+| type | shows | typical use |
 | --- | --- | --- |
-| 1 GPUs | utilization, VRAM, temperature, power, 10-min sparkline, processes, optional lane switching | any HTTP endpoint returning the JSON below |
-| 2 Fleet CPU | CPU %, load 1/5/15, RAM, cores, 10-min sparkline | Prometheus + node_exporter |
-| 3 CLI Proxy | plan quotas for Claude, Codex and Antigravity accounts, 24 h requests per model | a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) container reached over SSH |
+| `command` | output of any shell command as lines (with regex highlighting), a whitespace table, or JSON / JSON lines mapped to columns | logs, `df`, `docker ps`, `kubectl get pods -o json`, `systemctl list-units`, `gh run list --json` |
+| `processes` | local processes with CPU / memory bars, filtered by regex or user | "is my worker still running and how hot is it" |
+| `http` | HTTP checks (status, body text, latency trend) and TCP port checks | service health board |
+| `json` | any HTTP API returning JSON, with dotted paths to the rows and fields | job queues, internal status endpoints, CI APIs |
+| `prometheus` | PromQL queries as columns, one row per label value, optional trend sparklines | node CPU / RAM / load, request rates, queue depth |
+| `python` | your own view class | anything else |
+| `gpu`, `ai-quotas` | two richer built-in examples: GPU cards with lane switching, and Claude / Codex / Antigravity plan quotas through a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) container | see [examples/tabs.toml](examples/tabs.toml) |
 
-Every tab falls back to synthetic **demo data** (clearly marked `DEMO`) when its source is not
-configured, so it runs out of the box. Once a source has answered, a later failure shows the last
-real data as `Stale (Ns)` instead of demo data.
-
-Pure Python standard library (curses, urllib). Python 3.9+.
+Columns for `json`, `command` (json / table) and `prometheus` take the same options:
+`bar = 100` (draw a meter against that maximum), `scale`, `unit`, `format = "{:.2f}"`,
+`spark = true`, and colour rules `ok_values`, `warn_values`, `bad_values`,
+`warn_above`, `bad_above`, `warn_below`, `bad_below`.
 
 ## Install as a herdr plugin
 
@@ -22,7 +50,7 @@ git clone https://github.com/thefahien/herdeck ~/src/herdeck
 herdr plugin link ~/src/herdeck
 ```
 
-Bind one key in `~/.config/herdr/config.toml` (on the machine you attach from), then
+Bind one key in `~/.config/herdr/config.toml` on the machine you attach from, then run
 `herdr config check && herdr server reload-config`:
 
 ```toml
@@ -30,42 +58,72 @@ Bind one key in `~/.config/herdr/config.toml` (on the machine you attach from), 
 key = "alt+v"
 type = "plugin_action"
 command = "herdeck.open"
-description = "herdeck: dashboards"
+description = "herdeck"
 ```
 
-`herdeck.split` opens the same dashboards in a persistent split pane instead of a popup.
+`herdeck.split` opens the same deck in a persistent split pane.
 
 ## Configure
 
-Plugin panes do not inherit your shell environment. Put settings in
-`~/.config/herdeck/env` (outside the repo; it is sourced by `scripts/pane.sh`):
+With no config you get a demo deck: your processes and disks (real), plus sample Services,
+GPUs and AI quotas tabs. To build your own:
 
-```sh
-# Tab 1: GPU endpoint (GET <url>/api/state); token only needed for lane switching
-HERDECK_GPU_URL=http://localhost:8000
-HERDECK_GPU_TOKEN=
-
-# Tab 2: Prometheus; node names are matched against the `job` label
-HERDECK_PROMETHEUS_URL=http://localhost:9090
-HERDECK_NODES=worker-1,worker-2
-
-# Tab 3: SSH target of the host running the CLIProxyAPI container
-HERDECK_CLIPROXY_SSH=user@proxy-host
-HERDECK_CLIPROXY_CONTAINER=cli-proxy-api
-HERDECK_CLIPROXY_AUTH_DIR=/root/.cli-proxy-api
-
-# Set to 1 only for self-signed certs on your own GPU/Prometheus endpoints.
-# Provider quota calls (Anthropic, OpenAI, Google) always verify TLS.
-HERDECK_INSECURE_TLS=0
+```bash
+mkdir -p ~/.config/herdeck
+cp ~/src/herdeck/examples/tabs.toml ~/.config/herdeck/tabs.toml
 ```
 
-Tab 3 reads the first `claude-*.json`, `codex-*.json` and `antigravity-*.json` auth file inside
-the container and calls each provider's usage endpoint with that token. The tokens are never
-written to disk or shown. These usage endpoints are undocumented and may change.
+A tab is a `[[tab]]` table with `name`, `type`, an optional `interval` (seconds) and the
+type's own keys:
 
-### GPU endpoint format
+```toml
+[[tab]]
+name = "Containers"
+type = "command"
+command = "docker ps -a --format '{{json .}}'"
+format = "jsonl"
+interval = 10
+[[tab.column]]
+title = "Name"
+path = "Names"
+[[tab.column]]
+title = "State"
+path = "State"
+ok_values = ["running"]
+bad_values = ["exited", "dead"]
 
-`GET <HERDECK_GPU_URL>/api/state` returns:
+[[tab]]
+name = "Nodes"
+type = "prometheus"
+url = "${PROMETHEUS_URL:-http://localhost:9090}"
+label = "instance"
+[[tab.metric]]
+title = "CPU"
+query = '100 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100'
+bar = 100
+[[tab.metric]]
+title = "Load"
+query = "node_load1"
+format = "{:.2f}"
+bad_above = 8
+```
+
+[examples/tabs.toml](examples/tabs.toml) has one of every type. Config lookup:
+`--config PATH`, then `$HERDECK_CONFIG`, then `~/.config/herdeck/tabs.toml`.
+
+**Trust:** a deck runs shell commands (`command` tabs) and Python files (`python` tabs).
+Treat `tabs.toml` like a shell script and don't load decks you haven't read.
+
+**Secrets:** any string may use `${NAME}` or `${NAME:-default}`. In `command` strings the
+shell expands variables itself (values are never pasted into the command line). Plugin panes
+don't inherit your shell, so put variables in `~/.config/herdeck/env`; the pane script
+sources it with `sh` (`NAME=value` lines, quote values that contain spaces or `$`). Tokens are only sent where the tab sends them, redirects are never
+followed, and TLS is verified (set `HERDECK_INSECURE_TLS=1` for self-signed endpoints;
+`insecure = true` per HTTP check).
+
+### The two richer examples
+
+**`gpu`** reads `GET <url>/api/state` and expects:
 
 ```json
 {"gpus": [{
@@ -77,43 +135,87 @@ written to disk or shown. These usage endpoints are undocumented and may change.
 }]}
 ```
 
-`lanes` and lane switching are optional. The token is only sent over https (or to localhost), and redirects are never followed. Switching sends
+`lanes` are optional. Switching (after a y/N prompt) sends
 `POST <url>/api/switch {"gpu": id, "lane": id, "force": bool}` with
-`Authorization: Bearer $HERDECK_GPU_TOKEN`, always after a y/N confirmation.
+`Authorization: Bearer <token>`, only over https or to localhost.
+
+**`ai-quotas`** shows plan usage for the Claude, Codex and Antigravity accounts logged into
+a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) container. Over SSH it reads
+the first `claude-*`, `codex-*` and `antigravity-*` auth file in the container
+(`auth_dir`, default `/root/.cli-proxy-api`) and calls each provider's usage endpoint with
+that token; it also counts requests per model from the container log. Tokens are never
+written to disk or shown. Those usage endpoints are undocumented, may change without notice,
+and using them may fall under each provider's terms; it's an example of what a custom view
+can do, not a supported API client.
+
+## Write your own tab
+
+```python
+# ~/.config/herdeck/views/queue.py
+import json, urllib.request
+from herdeck.views import Bar, TableView, Text
+
+class View(TableView):
+    default_interval = 5            # seconds; [[tab]] interval overrides it
+
+    def fetch(self):                # runs in a background thread; may block or raise
+        with urllib.request.urlopen(self.cfg["url"], timeout=5) as r:
+            jobs = json.load(r)
+        rows = [[j["id"], Bar(j["pct"], 100), Text(j["state"], "bad" if j["state"] == "failed" else None)]
+                for j in jobs]
+        return ["JOB", "PROGRESS", "STATE"], rows
+
+    def detail(self, row):          # optional line under the table for the selected row
+        return f"job {row[0]}"
+```
+
+```toml
+[[tab]]
+name = "Queue"
+type = "python"
+path = "~/.config/herdeck/views/queue.py"
+url = "http://localhost:8080/jobs"
+```
+
+Cells are strings, `Text(value, tone)` with tone `ok`/`warn`/`bad`/`accent`/`dim`,
+`Bar(value, max)` or `Spark(values)`. `TableView` gives you selection, scrolling, mouse,
+stale/error status and `--once` output. For a fully custom screen subclass `BaseView`
+and implement `update()` and `draw()` yourself (see `herdeck/views/gpu.py`).
+[examples/weather.py](examples/weather.py) is a complete example.
 
 ## Keys
 
-| Key | Action |
+| key | action |
 | --- | --- |
-| `Tab` / `]`, `Shift+Tab` / `[` | next / previous tab |
-| `1`-`9` | jump to tab |
-| click a tab / row | switch tab / select row |
-| `j` `k`, arrows, mouse wheel | move selection |
-| `s` | lane switch prompt for the selected GPU (`s` again cycles lanes, `y` confirms) |
-| `Enter` | toggle process list (GPU tab) |
-| `r` | refresh now |
+| `Tab` `]` / `Shift+Tab` `[` | next / previous tab |
+| `1`-`9`, click | jump to a tab |
+| `j` `k`, arrows, wheel, click | move / select a row |
+| `PgUp` `PgDn` `g` `G` | page, top, bottom |
+| `r` | refresh the tab now |
 | `?` | help |
 | `q` / `Esc` | close |
+
+GPU tab only: `s` opens a lane-switch prompt for the selected card (`s` again picks the
+next lane, `y` confirms), `Enter` toggles the process list.
 
 ## CLI
 
 ```bash
-bin/herdeck            # interactive
-bin/herdeck --once     # print every tab once (also used when stdout is not a TTY)
-bin/herdeck --tab 3    # start on a tab
+bin/herdeck                      # interactive
+bin/herdeck --once               # every tab once, as text (also when stdout isn't a TTY)
+bin/herdeck --tab Services       # start on a tab (number or name)
+bin/herdeck --config deck.toml   # another deck
+bin/herdeck --types              # list tab types
 ```
-
-## Add a dashboard
-
-Create `herdeck/views/<name>.py` with a `BaseView` subclass implementing `update()`, `draw()` and
-`handle_key()` (optionally `handle_mouse_click()` and `print_once()`), then add it to the view list
-in `herdeck/cli.py`. Keep fetches off the UI thread or under ~2 s.
 
 ## Test
 
 ```bash
 python3 -m unittest discover -s tests
 ```
+
+Tests run every tab type against local fixtures and drive the real curses UI in a
+pseudo-terminal (keys, mouse, small terminal sizes).
 
 ## License
 
