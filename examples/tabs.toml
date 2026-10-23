@@ -1,7 +1,8 @@
 # herdeck example deck. Copy to ~/.config/herdeck/tabs.toml and edit.
 # Each [[tab]] is one tab; order here = order on screen (keys 1-9).
 # ${NAME} / ${NAME:-default} read environment variables, so secrets can stay in
-# ~/.config/herdeck/env (sourced by the plugin) instead of this file.
+# ~/.config/herdeck/env (sourced by the plugin) instead of this file. Inside a
+# `command` string the shell expands $NAME itself.
 
 refresh = 1          # how often the screen redraws (seconds); each tab has its own fetch interval
 
@@ -153,9 +154,11 @@ type = "ai-quotas"                   # CLIProxyAPI container reached over ssh
 ssh = "${HERDECK_CLIPROXY_SSH}"              # e.g. user@proxy-host
 container = "cli-proxy-api"
 
-# --- your own Python view ------------------------------------------------------------
+# --- your own tab, in any language ------------------------------------------------
+# An exec tab runs a program that prints herdeck's row format (JSON) on stdout.
+# See examples/weather.py and the README section "Write your own tab".
 [[tab]]
 name = "Weather"
-type = "python"
-path = "~/.config/herdeck/views/weather.py"   # see examples/weather.py
-city = "Toronto"
+type = "exec"
+command = "python3 ~/.config/herdeck/weather.py Toronto"
+interval = 600

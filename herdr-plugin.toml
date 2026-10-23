@@ -1,22 +1,26 @@
 # herdeck: tabbed terminal dashboards inside herdr
 id = "herdeck"
 name = "herdeck"
-version = "0.1.0"
+version = "0.2.0"
 description = "Turn any command, process list, health check, JSON API or Prometheus query into a tab in a herdr pane."
 min_herdr_version = "0.9.0"
 platforms = ["linux", "macos"]
+
+# Fetch the release binary for this OS/CPU (sha256-checked), else cargo build.
+[[build]]
+command = ["sh", "scripts/install.sh"]
 
 [[panes]]
 id = "popup"
 title = "herdeck"
 placement = "popup"
-command = ["bash", "scripts/pane.sh"]
+command = ["sh", "scripts/pane.sh"]
 
 [[panes]]
 id = "split"
 title = "herdeck"
 placement = "split"
-command = ["bash", "scripts/pane.sh"]
+command = ["sh", "scripts/pane.sh"]
 
 [[actions]]
 id = "open"

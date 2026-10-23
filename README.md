@@ -4,7 +4,7 @@
 One hotkey opens a tabbed popup; every tab is declared in a TOML file. Point a tab at a
 command, your processes, a set of health checks, any JSON API or a Prometheus query and it
 becomes a scrollable, colour-coded table that refreshes in the background. Anything those
-can't express is a 20-line Python class.
+can't express is a small script in any language that prints JSON.
 
 ```
 ●1:Processes   2:Disk   3:Services   4:Containers   5:Nodes   6:GPUs   7:AI quotas   12:04:51
@@ -20,11 +20,11 @@ can't express is a 20-line Python class.
  Tab/1-9/click:tabs · j/k/wheel:rows · r:refresh · ?:help · q:close                   [OK]
 ```
 
-- Pure Python standard library (curses, urllib, tomllib). Python 3.11+, Linux or macOS.
+- One static Rust binary (ratatui). Linux and macOS, x86_64 and arm64. Nothing else to install.
 - Keyboard and mouse: `Tab`/`1`-`9`/click to switch tabs, `j` `k`/wheel/click for rows.
 - Fetching never blocks the UI. A source that fails after working shows its last data as
   `Stale`; a tab that isn't configured yet shows sample data marked `DEMO`.
-- Runs on its own too: `bin/herdeck` in any terminal, `bin/herdeck --once` for plain text.
+- Runs on its own too: `herdeck` in any terminal, `herdeck --once` for plain text.
 
 ## Tab types
 
@@ -35,10 +35,10 @@ can't express is a 20-line Python class.
 | `http` | HTTP checks (status, body text, latency trend) and TCP port checks | service health board |
 | `json` | any HTTP API returning JSON, with dotted paths to the rows and fields | job queues, internal status endpoints, CI APIs |
 | `prometheus` | PromQL queries as columns, one row per label value, optional trend sparklines | node CPU / RAM / load, request rates, queue depth |
-| `python` | your own view class | anything else |
+| `exec` | any program (any language) that prints herdeck's JSON row format | anything else |
 | `gpu`, `ai-quotas` | two richer built-in examples: GPU cards with lane switching, and Claude / Codex / Antigravity plan quotas through a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) container | see [examples/tabs.toml](examples/tabs.toml) |
 
-Columns for `json`, `command` (json / table) and `prometheus` take the same options:
+Columns for `json`, `command` (json / jsonl / table) and `prometheus` take the same options:
 `bar = 100` (draw a meter against that maximum), `scale`, `unit`, `format = "{:.2f}"`,
 `spark = true`, and colour rules `ok_values`, `warn_values`, `bad_values`,
 `warn_above`, `bad_above`, `warn_below`, `bad_below`.
@@ -46,9 +46,12 @@ Columns for `json`, `command` (json / table) and `prometheus` take the same opti
 ## Install as a herdr plugin
 
 ```bash
-git clone https://github.com/thefahien/herdeck ~/src/herdeck
-herdr plugin link ~/src/herdeck
+herdr plugin install thefahien/herdeck
 ```
+
+The install step downloads the release binary for your OS and CPU and checks it against
+the release's `SHA256SUMS`; with no matching release it builds from source with `cargo`.
+Updates: run the same command again (add `--ref vX.Y.Z` to pin a version).
 
 Bind one key in `~/.config/herdr/config.toml` on the machine you attach from, then run
 `herdr config check && herdr server reload-config`:
@@ -111,15 +114,15 @@ bad_above = 8
 [examples/tabs.toml](examples/tabs.toml) has one of every type. Config lookup:
 `--config PATH`, then `$HERDECK_CONFIG`, then `~/.config/herdeck/tabs.toml`.
 
-**Trust:** a deck runs shell commands (`command` tabs) and Python files (`python` tabs).
+**Trust:** a deck runs shell commands (`command` tabs) and programs (`exec` tabs).
 Treat `tabs.toml` like a shell script and don't load decks you haven't read.
 
 **Secrets:** any string may use `${NAME}` or `${NAME:-default}`. In `command` strings the
 shell expands variables itself (values are never pasted into the command line). Plugin panes
 don't inherit your shell, so put variables in `~/.config/herdeck/env`; the pane script
 sources it with `sh` (`NAME=value` lines, quote values that contain spaces or `$`). Tokens are only sent where the tab sends them, redirects are never
-followed, and TLS is verified (set `HERDECK_INSECURE_TLS=1` for self-signed endpoints;
-`insecure = true` per HTTP check).
+followed, and TLS is always verified (use plain http for a local endpoint with a
+self-signed certificate).
 
 ### The two richer examples
 
@@ -150,38 +153,40 @@ can do, not a supported API client.
 
 ## Write your own tab
 
-```python
-# ~/.config/herdeck/views/queue.py
-import json, urllib.request
-from herdeck.views import Bar, TableView, Text
-
-class View(TableView):
-    default_interval = 5            # seconds; [[tab]] interval overrides it
-
-    def fetch(self):                # runs in a background thread; may block or raise
-        with urllib.request.urlopen(self.cfg["url"], timeout=5) as r:
-            jobs = json.load(r)
-        rows = [[j["id"], Bar(j["pct"], 100), Text(j["state"], "bad" if j["state"] == "failed" else None)]
-                for j in jobs]
-        return ["JOB", "PROGRESS", "STATE"], rows
-
-    def detail(self, row):          # optional line under the table for the selected row
-        return f"job {row[0]}"
-```
+An `exec` tab runs any program and renders the JSON it prints. Use any language:
 
 ```toml
 [[tab]]
 name = "Queue"
-type = "python"
-path = "~/.config/herdeck/views/queue.py"
-url = "http://localhost:8080/jobs"
+type = "exec"
+command = "python3 ~/.config/herdeck/queue.py"   # or a list, run without a shell
+interval = 5
 ```
 
-Cells are strings, `Text(value, tone)` with tone `ok`/`warn`/`bad`/`accent`/`dim`,
-`Bar(value, max)` or `Spark(values)`. `TableView` gives you selection, scrolling, mouse,
-stale/error status and `--once` output. For a fully custom screen subclass `BaseView`
-and implement `update()` and `draw()` yourself (see `herdeck/views/gpu.py`).
-[examples/weather.py](examples/weather.py) is a complete example.
+The program prints one JSON object:
+
+```json
+{
+  "header": "3 jobs",
+  "columns": ["JOB", "PROGRESS", "STATE"],
+  "rows": [
+    ["encode", {"bar": 50, "max": 100}, {"text": "running", "tone": "accent"}],
+    {"section": "finished"},
+    ["upload", {"bar": 100}, {"text": "failed", "tone": "bad"}]
+  ],
+  "details": ["shown under the table while row 1 is selected"]
+}
+```
+
+A cell is a string or number, `{"text": .., "tone": "ok|warn|bad|accent|dim"}`,
+`{"bar": value, "max": 100, "text": ".."}` or `{"spark": [1, 2, 3]}`. A row is a list of
+cells, an object keyed by column title, or `{"section": "Title"}`. Exit non-zero with a
+message on stderr to report an error; the tab keeps showing the last good output as
+`Stale`. [examples/weather.py](examples/weather.py) is a complete example.
+
+If your program already prints plain JSON, use a `command` tab with `format = "json"`
+and `[[tab.column]]` mappings instead. To add a built-in tab type, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Keys
 
@@ -195,27 +200,30 @@ and implement `update()` and `draw()` yourself (see `herdeck/views/gpu.py`).
 | `?` | help |
 | `q` / `Esc` | close |
 
-GPU tab only: `s` opens a lane-switch prompt for the selected card (`s` again picks the
-next lane, `y` confirms), `Enter` toggles the process list.
+GPU tab only: `s` opens a lane-switch prompt for the selected card (`s` or arrows pick
+the lane, `y` confirms); the line under the table shows its lanes and processes.
 
 ## CLI
 
-```bash
-bin/herdeck                      # interactive
-bin/herdeck --once               # every tab once, as text (also when stdout isn't a TTY)
-bin/herdeck --tab Services       # start on a tab (number or name)
-bin/herdeck --config deck.toml   # another deck
-bin/herdeck --types              # list tab types
-```
-
-## Test
+The plugin keeps its binary in `bin/herdeck` inside the plugin directory; you can also
+`cargo install --git https://github.com/thefahien/herdeck` and run it in any terminal.
 
 ```bash
-python3 -m unittest discover -s tests
+herdeck                      # interactive
+herdeck --once               # every tab once, as text (also when stdout isn't a TTY)
+herdeck --tab Services       # start on a tab (number or name)
+herdeck --config deck.toml   # another deck
+herdeck --types              # list tab types
 ```
 
-Tests run every tab type against local fixtures and drive the real curses UI in a
-pseudo-terminal (keys, mouse, small terminal sizes).
+## Develop
+
+```bash
+cargo build --release && target/release/herdeck
+sh scripts/check.sh          # what CI runs: fmt, clippy, tests, build, pty e2e, privacy scan
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the layout and the release process.
 
 ## License
 

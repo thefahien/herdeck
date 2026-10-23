@@ -1,0 +1,88 @@
+name: release
+
+# Push a tag vX.Y.Z (scripts/release.sh does it). Builds static Linux and macOS
+# binaries, writes SHA256SUMS, and publishes a GitHub release that
+# scripts/install.sh downloads during `herdr plugin install`.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag matches Cargo.toml and herdr-plugin.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          a=$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n1)
+          b=$(sed -n 's/^version *= *"\(.*\)"/\1/p' herdr-plugin.toml | head -n1)
+          test "$tag" = "$a" && test "$tag" = "$b"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: sh scripts/check.sh
+
+  build:
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: contains(matrix.target, 'linux-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: build (build paths remapped so no home directory ends up in the binary)
+        env:
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/herdeck --remap-path-prefix=${{ env.HOME }}/.cargo=/cargo
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: smoke test
+        if: "!(matrix.os == 'macos-latest' && matrix.target == 'x86_64-apple-darwin')"
+        run: ./target/${{ matrix.target }}/release/herdeck --version
+      - name: package
+        run: |
+          name="herdeck-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir dist
+          cp target/${{ matrix.target }}/release/herdeck dist/
+          cp LICENSE README.md dist/
+          tar czf "$name.tar.gz" -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: herdeck-*.tar.gz
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: checksums
+        run: cd assets && sha256sum herdeck-*.tar.gz > SHA256SUMS && cat SHA256SUMS
+      - name: release notes from CHANGELOG.md
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$0 ~ "^## \\[?"v"\\]?" {on=1; next} /^## / && on {exit} on' CHANGELOG.md > notes.md
+          printf '\n\nInstall: `herdr plugin install thefahien/herdeck`\n' >> notes.md
+          cat notes.md
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" assets/* --title "herdeck $GITHUB_REF_NAME" --notes-file notes.md --verify-tag

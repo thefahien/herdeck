@@ -1,7 +1,6 @@
+/target
+/bin
 __pycache__/
-*.py[cod]
-*$py.class
-.env
-*.swp
-*.swo
+*.pyc
 .DS_Store
+.privacy-patterns
