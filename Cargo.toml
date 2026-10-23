@@ -2,7 +2,7 @@
 name = "herdeck"
 version = "0.2.0"
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.88"
 description = "Turn commands, processes, health checks, JSON APIs and Prometheus queries into live tabs in a herdr pane"
 license = "MIT"
 repository = "https://github.com/thefahien/herdeck"
