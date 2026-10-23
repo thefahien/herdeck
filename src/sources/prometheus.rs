@@ -71,6 +71,14 @@ impl Source for Prometheus {
         self.url.is_some() && !self.metrics.is_empty()
     }
 
+    fn setup_hint(&self) -> Vec<String> {
+        vec![
+            "url = \"http://localhost:9090\"".into(),
+            "[[tab.metric]] with title and query, one per column".into(),
+            "(or PROMETHEUS_URL in ~/.config/herdeck/env)".into(),
+        ]
+    }
+
     fn fetch(&mut self) -> Result<Table> {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
         let mut keys: Vec<String> = self.rows.clone();

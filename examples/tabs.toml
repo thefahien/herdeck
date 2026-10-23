@@ -160,5 +160,5 @@ container = "cli-proxy-api"
 [[tab]]
 name = "Weather"
 type = "exec"
-command = "python3 ~/.config/herdeck/weather.py Toronto"
+command = "python3 ~/.config/herdeck/weather.py Paris"
 interval = 600

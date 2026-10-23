@@ -1,5 +1,5 @@
 //! Load tabs.toml. Lookup: --config, $HERDECK_CONFIG,
-//! ${XDG_CONFIG_HOME:-~/.config}/herdeck/tabs.toml, else the built-in demo deck.
+//! ${XDG_CONFIG_HOME:-~/.config}/herdeck/tabs.toml. With none, main runs first-run setup.
 
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
@@ -55,6 +55,15 @@ pub fn config_path(explicit: Option<&str>) -> PathBuf {
     base.join("herdeck").join("tabs.toml")
 }
 
+/// A path for messages, with the home directory shown as ~.
+pub fn pretty(p: &std::path::Path) -> String {
+    let h = home();
+    match p.strip_prefix(&h) {
+        Ok(rest) if h.as_os_str() != "/" => format!("~/{}", rest.display()),
+        _ => p.display().to_string(),
+    }
+}
+
 pub fn home() -> PathBuf {
     std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/"))
 }
@@ -64,6 +73,13 @@ pub fn expand_home(p: &str) -> PathBuf {
         Some(rest) => home().join(rest),
         None => PathBuf::from(p),
     }
+}
+
+/// Error text when no tabs.toml exists; main turns it into the first-run setup.
+pub const NO_DECK: &str = "no deck yet";
+
+pub fn demo_deck() -> Deck {
+    Deck { tabs: default_tabs(), refresh: 1.0, source: "demo deck (sample data)".into() }
 }
 
 pub fn default_tabs() -> Vec<Value> {
@@ -85,7 +101,7 @@ pub fn load(explicit: Option<&str>) -> Result<Deck> {
         if explicit.is_some() {
             return Err(anyhow!("config not found: {}", path.display()));
         }
-        return Ok(Deck { tabs: default_tabs(), refresh: 1.0, source: "built-in demo deck".into() });
+        return Err(anyhow!(NO_DECK));
     }
     let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     parse(&text, &path.display().to_string())

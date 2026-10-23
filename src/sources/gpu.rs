@@ -128,6 +128,14 @@ impl Source for Gpu {
         self.url.is_some()
     }
 
+    fn setup_hint(&self) -> Vec<String> {
+        vec![
+            "url = \"https://gpu-host\"   # herdeck reads <url>/api/state".into(),
+            "(or HERDECK_GPU_URL in ~/.config/herdeck/env)".into(),
+            "the JSON format is in the README, GPU tab".into(),
+        ]
+    }
+
     fn default_interval(&self) -> f64 {
         2.0
     }
@@ -150,7 +158,7 @@ impl Source for Gpu {
                 self.demo_mode = false;
                 Ok(self.render())
             }
-            Err(e) if !self.ever_ok => {
+            Err(e) if !self.ever_ok && super::demo_enabled() => {
                 if !self.demo_mode {
                     self.state = Gpu::demo_state();
                     self.demo_mode = true;
@@ -168,6 +176,9 @@ impl Source for Gpu {
             return None;
         }
         if self.state.is_null() {
+            if !super::demo_enabled() {
+                return None;
+            }
             self.state = Gpu::demo_state();
             self.demo_mode = true;
         }

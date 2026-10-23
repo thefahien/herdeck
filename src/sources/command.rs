@@ -175,6 +175,10 @@ impl Source for Command {
         !self.argv.is_empty()
     }
 
+    fn setup_hint(&self) -> Vec<String> {
+        vec!["command = \"...\"   # a string runs in sh, a list runs directly".into()]
+    }
+
     fn default_interval(&self) -> f64 {
         10.0
     }

@@ -31,6 +31,15 @@ impl Source for Json {
         self.url.is_some()
     }
 
+    fn setup_hint(&self) -> Vec<String> {
+        vec![
+            "url = \"http://localhost:8080/api/jobs\"".into(),
+            "items = \"jobs\"          # dotted path to the list".into(),
+            "[[tab.column]] with title and path, one per column".into(),
+            "(or set the variable in ~/.config/herdeck/env)".into(),
+        ]
+    }
+
     fn default_interval(&self) -> f64 {
         10.0
     }

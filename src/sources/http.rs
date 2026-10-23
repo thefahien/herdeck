@@ -98,6 +98,18 @@ impl Source for Checks {
         !self.checks.is_empty()
     }
 
+    fn setup_hint(&self) -> Vec<String> {
+        vec![
+            "one [[tab.check]] per endpoint, for example:".into(),
+            "[[tab.check]]".into(),
+            "name = \"website\"".into(),
+            "url = \"https://example.com/\"".into(),
+            "[[tab.check]]".into(),
+            "name = \"database\"".into(),
+            "tcp = \"localhost:5432\"".into(),
+        ]
+    }
+
     fn default_interval(&self) -> f64 {
         15.0
     }

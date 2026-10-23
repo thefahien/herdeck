@@ -65,14 +65,14 @@ class Screen:
         return "\n".join("".join(r).rstrip() for r in self.grid)
 
 
-def run(keys, cols=110, rows=26, settle=1.2):
-    """Start herdeck on the demo deck, send keys; returns (final screen, screen after
-    each key, exited)."""
+def run(keys, cols=110, rows=26, settle=1.2, args=("--demo",), config_home="/nonexistent-herdeck"):
+    """Start herdeck (default: the --demo deck), send keys; returns (final screen,
+    screen after each key, exited)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("HERDECK")}
-    env.update(TERM="xterm-256color", XDG_CONFIG_HOME="/nonexistent-herdeck", HOME="/nonexistent-herdeck")
+    env.update(TERM="xterm-256color", XDG_CONFIG_HOME=config_home, HOME=config_home)
     pid, fd = pty.fork()
     if pid == 0:
-        os.execve(BIN, [BIN], env)
+        os.execve(BIN, [BIN, *args], env)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     screen = Screen(cols, rows)
     raw = bytearray()
@@ -153,9 +153,53 @@ class E2E(unittest.TestCase):
         import subprocess
         env = {k: v for k, v in os.environ.items() if not k.startswith("HERDECK")}
         env.update(XDG_CONFIG_HOME="/nonexistent-herdeck", HOME="/nonexistent-herdeck")
-        out = subprocess.run([BIN, "--once"], capture_output=True, text=True, env=env, timeout=60).stdout
+        out = subprocess.run([BIN, "--once", "--demo"], capture_output=True, text=True, env=env, timeout=60).stdout
         for title in ("## Processes", "## Disk", "## Services  [DEMO]", "## GPUs  [DEMO]", "## AI quotas  [DEMO]"):
             self.assertIn(title, out)  # --once output is plain text, spaces intact
+
+    def test_first_run_picker_writes_deck_without_sample_data(self):
+        import shutil, subprocess, tempfile
+        home = tempfile.mkdtemp(prefix="herdeck-e2e-")
+        try:
+            # no deck and no --demo: the template picker, never sample data
+            full, s, exited = run([(b"", 0.1), (b"j", 0.3), (b"\r", 1.5), (b"q", 0.5)], args=(), config_home=home)
+            self.assertIn("setupyourdeck", s[0].replace(" ", ""))
+            self.assertNotIn("DEMO", full)
+            deck = os.path.join(home, "herdeck", "tabs.toml")
+            self.assertTrue(os.path.exists(deck), "enter should write the deck")
+            with open(deck) as f:
+                self.assertIn('type = "processes"', f.read())
+            self.assertIn("●1:Processes", s[2].replace(" ", ""))  # and open it
+            self.assertTrue(exited)
+            # a tab that needs settings explains itself instead of faking data
+            env = {k: v for k, v in os.environ.items() if not k.startswith("HERDECK")}
+            env.update(XDG_CONFIG_HOME=home, HOME=home)
+            with open(deck, "a") as f:
+                f.write('\n[[tab]]\nname = "Health"\ntype = "http"\n\n[[tab]]\nname = "GPUs"\ntype = "gpu"\n')
+            out = subprocess.run([BIN, "--once"], capture_output=True, text=True, env=env, timeout=60).stdout
+            self.assertIn("Not set up yet", out)
+            self.assertIn("[[tab.check]]", out)
+            self.assertNotIn("DEMO", out)
+            self.assertNotIn("RTX", out)
+        finally:
+            shutil.rmtree(home)
+
+    def test_no_deck_without_terminal_explains(self):
+        import subprocess
+        env = {k: v for k, v in os.environ.items() if not k.startswith("HERDECK")}
+        env.update(XDG_CONFIG_HOME="/nonexistent-herdeck", HOME="/nonexistent-herdeck")
+        r = subprocess.run([BIN, "--once"], capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("herdeck init", r.stderr)
+        self.assertEqual(r.stdout, "")
+
+    def test_piping_into_head_does_not_panic(self):
+        import subprocess, shlex
+        for args in ("init --list", "--types", "--once --demo"):
+            r = subprocess.run(f"{shlex.quote(BIN)} {args} | head -1", shell=True, capture_output=True, text=True,
+                               env=dict(os.environ, HOME="/nonexistent-herdeck", XDG_CONFIG_HOME="/nonexistent-herdeck"), timeout=60)
+            self.assertNotIn("panicked", r.stderr, args)
+            self.assertTrue(r.stdout.strip(), args)
 
 
 if __name__ == "__main__":
