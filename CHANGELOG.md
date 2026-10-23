@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Section titles span the whole row instead of being cut at the first column's width.
+- README demo (`docs/demo.svg`, recorded by `scripts/demo-svg.py`).
+- Release binaries no longer contain the build machine's paths.
+
 ## 0.2.0
 
 - Rewritten in Rust: one static binary (ratatui), no Python needed. `herdr plugin install`

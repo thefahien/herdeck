@@ -271,6 +271,22 @@ impl App {
             v.visible = table_h.saturating_sub(1) as usize;
             let r = Rect { x: body.x + 1, y, width: body.width.saturating_sub(1), height: table_h };
             f.render_stateful_widget(t, r, &mut v.state);
+            // a section title spans the whole row; a table cell would cut it at the
+            // first column's width, so draw it over the row after the table
+            let offset = v.state.offset();
+            for (i, row) in table.rows.iter().enumerate().skip(offset).take(v.visible) {
+                if let Some(title) = &row.section {
+                    let mut style = Style::new().fg(Color::Magenta).add_modifier(Modifier::BOLD);
+                    if i == sel {
+                        style = style.add_modifier(Modifier::REVERSED);
+                    }
+                    let ry = y + 1 + (i - offset) as u16;
+                    f.render_widget(
+                        Paragraph::new(Span::styled(format!("── {title}"), style)),
+                        Rect { x: r.x, y: ry, width: r.width, height: 1 },
+                    );
+                }
+            }
             if table.rows.len() > v.visible {
                 let pos = format!(" {}/{} ", sel + 1, table.rows.len());
                 let w = pos.chars().count() as u16;

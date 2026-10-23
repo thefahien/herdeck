@@ -6,6 +6,8 @@ command, your processes, a set of health checks, any JSON API or a Prometheus qu
 becomes a scrollable, colour-coded table that refreshes in the background. Anything those
 can't express is a small script in any language that prints JSON.
 
+![herdeck switching between tabs for services, GPUs, AI quotas and a custom exec tab](docs/demo.svg)
+
 ```
 ●1:Processes   2:Disk   3:Services   4:Containers   5:Nodes   6:GPUs   7:AI quotas   12:04:51
 ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -224,6 +226,7 @@ sh scripts/check.sh          # what CI runs: fmt, clippy, tests, build, pty e2e,
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the layout and the release process.
+`python3 scripts/demo-svg.py` re-records `docs/demo.svg` from the demo deck (sample data only).
 
 ## License
 
