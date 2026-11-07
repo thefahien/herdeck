@@ -244,6 +244,10 @@ impl Source for Gpu {
         ))
     }
 
+    fn action_keys(&self) -> &'static [char] {
+        &['s']
+    }
+
     fn keys_help(&self) -> &'static str {
         "s  switch the selected card's lane (s/←→ pick, y confirm)"
     }

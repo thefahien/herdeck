@@ -69,6 +69,21 @@ description = "herdeck"
 
 `herdeck.split` opens the same deck in a persistent split pane.
 
+## Herdr desktop app
+
+herdeck also ships as a native mod for the [Herdr desktop app](https://herdr.dev): the same deck as a
+GPU-drawn panel (real bars and sparklines, theme colours, mouse and keyboard), as a pane, a tab or an overlay.
+It runs `herdeck --json` through `sh`, sources `~/.config/herdeck/env` like the plugin pane does, and reads
+nothing else. Mods are unsandboxed code: read `app/mods/herdeck/main.js` before you add it.
+
+1. Install herdeck on the machine (needs a build with `--json`; see [docs/json.md](docs/json.md)).
+2. Ask your Herdr agent to "add the mod at github.com/thefahien/herdeck/tree/main/app", or by hand:
+   `cp -R app/mods/herdeck ~/.config/herdr-app/mods/`, merge `app/keys.json` into your `keys.json`, then
+   `herdr-app check ~/.config/herdr-app/mods/herdeck`.
+3. Open it with `ctrl-shift-h`, or `herdr-app do pane.split --direction right --mod herdeck`.
+
+Details, behaviour and the full spec: [app/RECIPE.md](app/RECIPE.md).
+
 ## Configure
 
 ### First run
@@ -230,16 +245,20 @@ The plugin keeps its binary in `bin/herdeck` inside the plugin directory; you ca
 ```bash
 herdeck                      # interactive
 herdeck --once               # every tab once, as text (also when stdout isn't a TTY)
+herdeck --json               # every tab once, as one JSON document (docs/json.md)
 herdeck --tab Services       # start on a tab (number or name)
 herdeck --config deck.toml   # another deck
 herdeck --types              # list tab types
 ```
 
+`herdeck --json [--tab N|NAME] [--timeout SECS]` prints the fetched tabs as JSON, for
+programs that draw the deck themselves. The format is described in [docs/json.md](docs/json.md).
+
 ## Develop
 
 ```bash
 cargo build --release && target/release/herdeck
-sh scripts/check.sh          # what CI runs: fmt, clippy, tests, build, pty e2e, privacy scan
+sh scripts/check.sh          # what CI runs: fmt, clippy, tests, build, pty e2e, --json contract, privacy scan
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the layout and the release process.

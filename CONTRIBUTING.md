@@ -3,11 +3,12 @@
 ```bash
 cargo build --release          # target/release/herdeck
 target/release/herdeck         # demo deck, or your ~/.config/herdeck/tabs.toml
-sh scripts/check.sh            # fmt, clippy, unit tests, release build, pty e2e, privacy scan
+sh scripts/check.sh            # fmt, clippy, unit tests, release build, pty e2e, --json contract, privacy scan
 ```
 
 `scripts/check.sh` is exactly what CI runs; keep it green. `tests/e2e.py` drives the
 real binary in a pseudo-terminal (keys, mouse, small sizes) and needs only python3.
+`tests/json_contract.py` checks `herdeck --json` against `docs/json/` and a few throwaway decks.
 
 ## Layout
 
@@ -15,7 +16,7 @@ real binary in a pseudo-terminal (keys, mouse, small sizes) and needs only pytho
   `Table`). Add a type there and register it in `sources::build` and `TYPES`.
 - `src/model.rs` cells (text, bar, sparkline), rows, tables.
 - `src/util.rs` JSON paths, column specs and colour rules, HTTP (no redirects, TLS verified).
-- `src/tab.rs` background fetch loop per tab; `src/app.rs` the terminal UI.
+- `src/tab.rs` background fetch loop per tab; `src/app.rs` the terminal UI; `src/json.rs` `--json`.
 - `scripts/install.sh` run by `herdr plugin install`; `scripts/pane.sh` the pane entrypoint.
 
 ## Privacy

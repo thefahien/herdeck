@@ -1,5 +1,7 @@
 //! What a tab produces: a table of cells, plus status metadata.
 
+use serde_json::{json, Value};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
     Ok,
@@ -10,6 +12,17 @@ pub enum Tone {
 }
 
 impl Tone {
+    /// The lowercase name `herdeck --json` uses.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Tone::Ok => "ok",
+            Tone::Warn => "warn",
+            Tone::Bad => "bad",
+            Tone::Accent => "accent",
+            Tone::Dim => "dim",
+        }
+    }
+
     pub fn parse(s: &str) -> Option<Tone> {
         match s.to_ascii_lowercase().as_str() {
             "ok" | "good" | "green" => Some(Tone::Ok),
@@ -78,6 +91,38 @@ impl Cell {
     }
 }
 
+/// A JSON number; NaN and infinities (which JSON cannot hold) become 0.
+fn num(v: f64) -> Value {
+    json!(if v.is_finite() { v } else { 0.0 })
+}
+
+impl Cell {
+    /// The cell as `herdeck --json` prints it (docs/json.md): numbers, never glyphs.
+    pub fn to_json(&self) -> Value {
+        match self {
+            Cell::Text { text, tone } => json!({"kind": "text", "text": text, "tone": tone.map(Tone::as_str)}),
+            Cell::Bar { value, max, text, width } => json!({
+                "kind": "bar",
+                "value": num(*value),
+                "max": num(*max),
+                "text": text,
+                "tone": self.tone().unwrap_or(Tone::Ok).as_str(),
+                "width": width,
+            }),
+            Cell::Spark { values, max, width } => {
+                let tail = &values[values.len().saturating_sub(*width)..];
+                json!({
+                    "kind": "spark",
+                    "values": tail.iter().map(|v| num(*v)).collect::<Vec<_>>(),
+                    "max": max.map(num),
+                    "tone": "accent",
+                    "width": width,
+                })
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Row {
     pub cells: Vec<Cell>,
@@ -107,6 +152,22 @@ impl Row {
         self.key = Some(k.into());
         self
     }
+
+    /// A data row `{cells, detail?, key?}` or a section row `{section}`.
+    pub fn to_json(&self) -> Value {
+        if let Some(title) = &self.section {
+            return json!({ "section": title });
+        }
+        let mut m = serde_json::Map::new();
+        m.insert("cells".into(), self.cells.iter().map(Cell::to_json).collect());
+        if let Some(d) = &self.detail {
+            m.insert("detail".into(), json!(d));
+        }
+        if let Some(k) = &self.key {
+            m.insert("key".into(), json!(k));
+        }
+        Value::Object(m)
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -123,6 +184,15 @@ pub struct Table {
 impl Table {
     pub fn new(columns: Vec<String>, rows: Vec<Row>) -> Table {
         Table { columns, rows, ..Default::default() }
+    }
+
+    /// `{header, columns, rows}`; demo and note are reported by the tab's state instead.
+    pub fn to_json(&self) -> Value {
+        json!({
+            "header": self.header,
+            "columns": self.columns,
+            "rows": self.rows.iter().map(Row::to_json).collect::<Vec<_>>(),
+        })
     }
 }
 
@@ -173,5 +243,60 @@ mod tests {
         assert_eq!(Cell::bar(41.0, 100.0, None, 4).render(), "██░░   41%");
         assert_eq!(Cell::bar(95.0, 100.0, None, 4).tone(), Some(Tone::Bad));
         assert_eq!(trim_float(2.50), "2.5");
+    }
+
+    #[test]
+    fn text_cell_json() {
+        assert_eq!(Cell::text("hi").to_json(), json!({"kind": "text", "text": "hi", "tone": null}));
+        assert_eq!(Cell::toned("up", Some(Tone::Ok)).to_json(), json!({"kind": "text", "text": "up", "tone": "ok"}));
+    }
+
+    #[test]
+    fn bar_cell_json_tone_thresholds() {
+        let tone = |v: f64, max: f64| Cell::bar(v, max, None, 8).to_json()["tone"].clone();
+        assert_eq!(tone(69.0, 100.0), "ok");
+        assert_eq!(tone(70.0, 100.0), "warn");
+        assert_eq!(tone(89.0, 100.0), "warn");
+        assert_eq!(tone(90.0, 100.0), "bad");
+        assert_eq!(tone(250.0, 100.0), "bad");
+        assert_eq!(tone(5.0, 0.0), "ok");
+        assert_eq!(
+            Cell::bar(15.8, 24.0, Some("15.8/24G".into()), 8).to_json(),
+            json!({"kind": "bar", "value": 15.8, "max": 24.0, "text": "15.8/24G", "tone": "ok", "width": 8})
+        );
+        assert_eq!(Cell::bar(41.0, 100.0, None, 8).to_json()["text"], "41%");
+        // JSON has no NaN or infinity
+        assert_eq!(Cell::bar(f64::NAN, f64::INFINITY, None, 8).to_json()["value"], 0.0);
+    }
+
+    #[test]
+    fn spark_cell_json_keeps_the_tail_the_tui_draws() {
+        let values: Vec<f64> = (1..=12).map(f64::from).collect();
+        let j = Cell::spark(values, None, 10).to_json();
+        assert_eq!(j["values"].as_array().unwrap().len(), 10);
+        assert_eq!(j["values"][0], 3.0);
+        assert_eq!(j["values"][9], 12.0);
+        assert_eq!(j["max"], Value::Null);
+        assert_eq!(j["tone"], "accent");
+        assert_eq!(j["width"], 10);
+        let empty = Cell::spark(vec![], Some(8.0), 10).to_json();
+        assert_eq!(empty["values"], json!([]));
+        assert_eq!(empty["max"], 8.0);
+    }
+
+    #[test]
+    fn row_and_table_json() {
+        let plain = Row::new(vec![Cell::text("a")]);
+        assert_eq!(plain.to_json(), json!({"cells": [{"kind": "text", "text": "a", "tone": null}]}));
+        let full = Row::new(vec![]).with_detail("more").with_key("k1");
+        assert_eq!(full.to_json(), json!({"cells": [], "detail": "more", "key": "k1"}));
+        assert_eq!(Row::new(vec![]).with_detail("").to_json(), json!({"cells": []}));
+        assert_eq!(Row::section("Title").to_json(), json!({"section": "Title"}));
+        let keys: Vec<String> = full.to_json().as_object().unwrap().keys().cloned().collect();
+        assert_eq!(keys, ["cells", "detail", "key"]);
+        let t = Table { header: Some("h".into()), columns: vec!["A".into()], rows: vec![plain], ..Default::default() };
+        assert_eq!(t.to_json()["header"], "h");
+        assert_eq!(t.to_json()["rows"].as_array().unwrap().len(), 1);
+        assert_eq!(Table::default().to_json()["header"], Value::Null);
     }
 }
