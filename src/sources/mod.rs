@@ -61,6 +61,10 @@ pub trait Source: Send {
     fn confirm(&mut self, _prompt: &Prompt) -> Result<String> {
         Ok("nothing to do".into())
     }
+    /// Keys whose `on_key` opens a prompt on a row (reported to `--json` as row actions).
+    fn action_keys(&self) -> &'static [char] {
+        &[]
+    }
     /// Extra key help for this tab, shown in the ? overlay.
     fn keys_help(&self) -> &'static str {
         ""

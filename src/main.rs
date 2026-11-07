@@ -3,6 +3,7 @@
 
 mod app;
 mod config;
+mod json;
 mod model;
 mod setup;
 mod sources;
@@ -14,13 +15,20 @@ use std::process::ExitCode;
 
 const USAGE: &str = "herdeck: tabbed terminal dashboards for herdr
 
-usage: herdeck [--config PATH] [--tab N|NAME] [--once] [--demo] [--types] [--version]
+usage: herdeck [--config PATH] [--tab N|NAME] [--once] [--json] [--timeout SECS] [--demo]
+               [--types] [--version]
        herdeck init [--with ID,ID,...] [--force] [--list]
 
   --config PATH   deck to load (default: $HERDECK_CONFIG, else ~/.config/herdeck/tabs.toml).
                   With no deck, herdeck opens a picker to create one.
   --tab N|NAME    tab to start on
   --once          print every tab once as text and exit (also when stdout is not a TTY)
+  --json          print every tab once as one JSON document and exit (see docs/json.md);
+                  with --tab, only that tab is fetched. Exit 1 prints an error document.
+  --act TAB ROW KEY CHOICE
+                  press KEY on the row whose key is ROW in a tab, confirm CHOICE, print the result as
+                  JSON (what a program drawing the deck calls; docs/json.md). Exit 1 if it failed.
+  --timeout SECS  with --json: give up on slow tabs after SECS seconds (default 15, 1 to 120)
   --demo          fill tabs that aren't set up with sample data (with no deck: a demo deck)
   --types         list tab types
   --version       print the version
@@ -54,12 +62,30 @@ fn main() -> ExitCode {
         return init(args.collect());
     }
     let (mut config, mut tab, mut once, mut demo) = (None, None, false, false);
+    let (mut as_json, mut timeout) = (false, json::DEFAULT_TIMEOUT);
+    let mut act: Option<Vec<String>> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--demo" => demo = true,
             "--config" | "-c" => config = args.next(),
             "--tab" | "-t" => tab = args.next(),
             "--once" => once = true,
+            "--json" => as_json = true,
+            "--act" => {
+                let v: Vec<String> = args.by_ref().take(4).collect();
+                if v.len() != 4 {
+                    eprintln!("herdeck: --act needs TAB ROW KEY CHOICE\n\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+                act = Some(v);
+            }
+            "--timeout" => match args.next().and_then(|s| s.parse::<f64>().ok()) {
+                Some(secs) => timeout = secs,
+                None => {
+                    eprintln!("herdeck: --timeout needs a number of seconds\n\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            },
             "--types" => {
                 quiet_on_closed_pipe();
                 for (n, d) in sources::TYPES {
@@ -82,6 +108,14 @@ fn main() -> ExitCode {
         }
     }
     sources::set_demo(demo);
+    if let Some(a) = act {
+        quiet_on_closed_pipe();
+        return json::act(config.as_deref(), &a[0], &a[1], &a[2], &a[3], demo);
+    }
+    if as_json {
+        quiet_on_closed_pipe();
+        return json::run(config.as_deref(), tab.as_deref(), demo, timeout);
+    }
     let interactive = !once && std::io::IsTerminal::is_terminal(&std::io::stdout());
     let deck = match config::load(config.as_deref()) {
         Ok(d) => d,

@@ -406,28 +406,51 @@ impl App {
     }
 }
 
+const PROMPT_HINT: &str = " y confirm · n/Esc cancel · s/←→/↑↓ pick";
+
+/// Cut `s` to `w` characters, ending in an ellipsis when something was removed.
+fn fit(s: &str, w: usize) -> String {
+    if s.chars().count() <= w {
+        return s.to_string();
+    }
+    if w == 0 {
+        return String::new();
+    }
+    let mut out: String = s.chars().take(w - 1).collect();
+    out.push('…');
+    out
+}
+
 fn draw_prompt(f: &mut Frame, area: Rect, p: &Prompt) {
-    let mut lines = vec![Line::from("")];
-    let opts: Vec<Span> = p
+    // 64 columns, or wider when a long option or warning needs it and the screen allows.
+    let want = p
         .options
         .iter()
-        .enumerate()
-        .flat_map(|(i, o)| {
-            let s = if i == p.choice {
-                Style::new().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)
-            } else {
-                Style::new()
-            };
-            vec![Span::styled(format!(" {o} "), s), Span::raw(" ")]
-        })
-        .collect();
-    lines.push(Line::from([vec![Span::raw(" to: ")], opts].concat()));
+        .map(|o| o.chars().count() + 8)
+        .chain(p.warning.iter().map(|w| w.chars().count() + 3))
+        .max()
+        .unwrap_or(0)
+        .max(64);
+    let w = (want as u16).min(area.width);
+    let inner = (w as usize).saturating_sub(2);
+    let mut lines = vec![Line::from(""), Line::from(" to:")];
+    // One option per line: a long label is cut with an ellipsis instead of running off the box
+    // or pushing the next option out of sight.
+    for (i, o) in p.options.iter().enumerate() {
+        let label = format!(" {} ", fit(o, inner.saturating_sub(6)));
+        let s = if i == p.choice {
+            Style::new().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)
+        } else {
+            Style::new()
+        };
+        lines.push(Line::from(vec![Span::raw("   "), Span::styled(label, s)]));
+    }
     if let Some(w) = &p.warning {
-        lines.push(Line::from(Span::styled(format!(" {w}"), Style::new().fg(Color::Yellow))));
+        lines.push(Line::from(Span::styled(fit(&format!(" {w}"), inner), Style::new().fg(Color::Yellow))));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from(" y confirm · n/Esc cancel · s/←→ pick"));
-    let r = centered(area, 64.min(area.width), (lines.len() as u16 + 2).min(area.height));
+    lines.push(Line::from(fit(PROMPT_HINT, inner)));
+    let r = centered(area, w, (lines.len() as u16 + 2).min(area.height));
     f.render_widget(Clear, r);
     f.render_widget(
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(format!(" {} ", p.title))),
@@ -498,4 +521,65 @@ fn chrono_now() -> String {
             + off;
     let s = now.rem_euclid(86400);
     format!("{:02}:{:02}:{:02}", s / 3600, s % 3600 / 60, s % 60)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn screen(p: &Prompt, w: u16, h: u16) -> Vec<String> {
+        let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+        t.draw(|f| draw_prompt(f, f.area(), p)).unwrap();
+        let b = t.backend().buffer();
+        (0..h).map(|y| (0..w).map(|x| b[(x, y)].symbol().to_string()).collect::<String>()).collect()
+    }
+
+    fn lane_prompt() -> Prompt {
+        Prompt {
+            title: "Switch lane: GPU 0".into(),
+            options: vec![
+                "Model A 70B Q4, both cards (server)".into(),
+                "Model A 70B Q4 UNCENSORED, both cards (server)".into(),
+            ],
+            ids: vec!["a".into(), "b".into()],
+            target: "gpu0".into(),
+            warning: Some("1 process(es) on this card may be stopped".into()),
+            choice: 0,
+        }
+    }
+
+    /// Every option has its own line and none is cut without a visible ellipsis.
+    #[test]
+    fn long_lane_names_are_shown_or_ellipsised_never_silently_cut() {
+        let p = lane_prompt();
+        for width in [120u16, 80, 64, 50, 40] {
+            let rows = screen(&p, width, 14);
+            for o in &p.options {
+                let whole = rows.iter().any(|r| r.contains(o.as_str()));
+                let head: String = o.chars().take(24).collect();
+                let ellipsised = rows.iter().any(|r| r.contains(head.as_str()) && r.contains('…'));
+                assert!(
+                    whole || ellipsised,
+                    "width {width}: option {o:?} neither fits nor ends in an ellipsis:\n{}",
+                    rows.join("\n")
+                );
+            }
+            // the box keeps its right border on every dialog row
+            let top = rows.iter().position(|r| r.contains('┌')).expect("top border");
+            let bottom = rows.iter().position(|r| r.contains('└')).expect("bottom border");
+            for r in &rows[top + 1..bottom] {
+                assert!(r.trim_end().ends_with('│'), "width {width}: row lost its border: {r:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn fit_cuts_with_an_ellipsis_only_when_needed() {
+        assert_eq!(fit("short", 10), "short");
+        assert_eq!(fit("exactly10!", 10), "exactly10!");
+        assert_eq!(fit("longer than ten", 10), "longer th…");
+        assert_eq!(fit("anything", 0), "");
+    }
 }

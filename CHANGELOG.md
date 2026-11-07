@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- Lane switch dialog: each option gets its own line instead of running off the dialog or hiding the other options. A long lane name is cut with an ellipsis in the terminal and wraps onto a second line in the desktop app. The app dialog also takes ↑/↓ to pick, ignores other keys while open, and remembers the machine it was opened for.
+- `herdeck --act` only accepts keys the tab offers and says why a row is missing when the tab is unreachable.
+- `herdeck --json`: every tab fetched once and printed as one JSON document (tab states,
+  tables with typed cells, `--tab`, `--timeout`), for programs that draw the deck
+  themselves. Format and samples: `docs/json.md`, `docs/json/`.
+- Native mod for the Herdr desktop app in `app/`: the deck as a live panel, pane, tab or overlay
+  (`ctrl-shift-h`). Needs `herdeck --json`. See the README and `app/RECIPE.md`.
+- Row actions in `--json` (`actions` on a row; the `gpu` tab offers its lane switch) and
+  `herdeck --act TAB ROW KEY CHOICE` to run one, so the desktop app panel can switch a GPU lane.
+
 ## 0.3.0
 
 - First run: with no deck, herdeck asks which starter tabs you want (only ones that work

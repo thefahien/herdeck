@@ -11,6 +11,11 @@ use std::time::{Duration, Instant};
 pub struct State {
     pub table: Table,
     pub status: String,
+    /// Why the table looks the way it does: "ok", "demo", "not_set_up" or "error"
+    /// ("" before the first fetch). `herdeck --json` reports it.
+    pub outcome: &'static str,
+    /// The error text, the demo reason, or the not-set-up header (None when ok).
+    pub message: Option<String>,
     pub demo: bool,
     pub last_ok: Option<Instant>,
     pub last_fetch: Option<Instant>,
@@ -19,6 +24,8 @@ pub struct State {
 
 pub struct Tab {
     pub name: String,
+    /// The `type` from tabs.toml ("" when missing).
+    pub kind: String,
     pub interval: f64,
     pub state: Arc<Mutex<State>>,
     pub source: Arc<Mutex<Box<dyn Source>>>,
@@ -47,6 +54,7 @@ impl Tab {
         let keys_help = source.keys_help();
         Tab {
             name,
+            kind,
             interval,
             state: Arc::new(Mutex::new(State { status: "loading".into(), ..Default::default() })),
             source: Arc::new(Mutex::new(source)),
@@ -73,14 +81,19 @@ impl Tab {
                 Some(t) => {
                     st.table = t;
                     st.demo = true;
+                    st.outcome = "demo";
+                    st.message = Some("not configured".into());
                     st.status = "DEMO (not configured)".into();
                 }
                 None => {
+                    let header = format!(
+                        "Not set up yet. Add this to the tab in {}, then reopen herdeck:",
+                        crate::config::pretty(&crate::config::config_path(None))
+                    );
+                    st.outcome = "not_set_up";
+                    st.message = Some(header.clone());
                     st.table = Table {
-                        header: Some(format!(
-                            "Not set up yet. Add this to the tab in {}, then reopen herdeck:",
-                            crate::config::pretty(&crate::config::config_path(None))
-                        )),
+                        header: Some(header),
                         columns: vec!["TO DO".into()],
                         rows: hint
                             .into_iter()
@@ -93,6 +106,8 @@ impl Tab {
             },
             Some(Ok(t)) => {
                 st.demo = t.demo.is_some();
+                st.outcome = if t.demo.is_some() { "demo" } else { "ok" };
+                st.message = t.demo.clone();
                 st.status = match (&t.demo, &t.note) {
                     (Some(why), _) => format!("DEMO ({why})"),
                     (None, Some(n)) => n.clone(),
@@ -105,6 +120,8 @@ impl Tab {
             }
             Some(Err(e)) => {
                 let msg = crate::util::short_err(&e.to_string());
+                st.outcome = "error";
+                st.message = Some(msg.clone());
                 st.status = match st.last_ok {
                     Some(ok) => format!("Stale {}s: {msg}", ok.elapsed().as_secs()),
                     None => format!("error: {msg}"),

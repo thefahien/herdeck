@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "herdeck": "0.4.0",
+  "bin": "/usr/local/bin/herdeck",
+  "deck": "demo deck (sample data)",
+  "demo": true,
+  "tabs": [
+    {
+      "index": 1,
+      "name": "Processes",
+      "type": "processes",
+      "interval": 3,
+      "state": "ok",
+      "status": "OK",
+      "message": null,
+      "table": {
+        "header": "212 processes (all), sorted by cpu",
+        "columns": ["PID", "USER", "CPU", "MEM", "UP", "COMMAND"],
+        "rows": [
+          { "cells": [
+              { "kind": "text", "text": "4211", "tone": null },
+              { "kind": "text", "text": "dev", "tone": null },
+              { "kind": "bar", "value": 93, "max": 100, "text": "93%", "tone": "bad", "width": 8 },
+              { "kind": "bar", "value": 12.4, "max": 100, "text": "12.4%", "tone": "ok", "width": 8 },
+              { "kind": "text", "text": "02:14:09", "tone": null },
+              { "kind": "text", "text": "cargo build --release", "tone": null } ],
+            "detail": "cargo build --release --locked (pid 4211, parent 4100)", "key": "4211" },
+          { "cells": [
+              { "kind": "text", "text": "3870", "tone": null },
+              { "kind": "text", "text": "dev", "tone": null },
+              { "kind": "bar", "value": 74, "max": 100, "text": "74%", "tone": "warn", "width": 8 },
+              { "kind": "bar", "value": 3.1, "max": 100, "text": "3.1%", "tone": "ok", "width": 8 },
+              { "kind": "text", "text": "00:41", "tone": null },
+              { "kind": "text", "text": "node", "tone": null } ],
+            "key": "3870" },
+          { "cells": [
+              { "kind": "text", "text": "1022", "tone": null },
+              { "kind": "text", "text": "root", "tone": null },
+              { "kind": "bar", "value": 2, "max": 100, "text": "2%", "tone": "ok", "width": 8 },
+              { "kind": "bar", "value": 0.4, "max": 100, "text": "0.4%", "tone": "ok", "width": 8 },
+              { "kind": "text", "text": "6-01:12:40", "tone": null },
+              { "kind": "text", "text": "sshd", "tone": null } ],
+            "key": "1022" }
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "name": "Disk",
+      "type": "command",
+      "interval": 30,
+      "state": "ok",
+      "status": "OK",
+      "message": null,
+      "table": {
+        "header": "$ df -hP | grep -vE '^(tmpfs|devtmpfs|overlay|squashfs|udev|shm|map )'",
+        "columns": ["Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"],
+        "rows": [
+          { "cells": [
+              { "kind": "text", "text": "/dev/nvme0n1p2", "tone": null },
+              { "kind": "text", "text": "915G", "tone": null },
+              { "kind": "text", "text": "842G", "tone": null },
+              { "kind": "text", "text": "27G", "tone": null },
+              { "kind": "bar", "value": 97, "max": 100, "text": "97%", "tone": "bad", "width": 8 },
+              { "kind": "text", "text": "/", "tone": null } ] },
+          { "cells": [
+              { "kind": "text", "text": "/dev/nvme0n1p1", "tone": null },
+              { "kind": "text", "text": "511M", "tone": null },
+              { "kind": "text", "text": "6.1M", "tone": null },
+              { "kind": "text", "text": "505M", "tone": null },
+              { "kind": "bar", "value": 2, "max": 100, "text": "2%", "tone": "ok", "width": 8 },
+              { "kind": "text", "text": "/boot/efi", "tone": null } ] }
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "name": "Services",
+      "type": "http",
+      "interval": 15,
+      "state": "demo",
+      "status": "DEMO (not configured)",
+      "message": "not configured",
+      "table": {
+        "header": "2/3 up",
+        "columns": ["SERVICE", "STATE", "CODE", "LATENCY", "TREND", "TARGET"],
+        "rows": [
+          { "cells": [
+              { "kind": "text", "text": "web", "tone": null },
+              { "kind": "text", "text": "UP", "tone": "ok" },
+              { "kind": "text", "text": "200", "tone": null },
+              { "kind": "text", "text": "38 ms", "tone": null },
+              { "kind": "spark", "values": [41, 39, 52, 47, 38, 36, 44, 61, 40, 38], "max": null, "tone": "accent", "width": 10 },
+              { "kind": "text", "text": "https://example.com/health", "tone": "dim" } ] },
+          { "cells": [
+              { "kind": "text", "text": "api", "tone": null },
+              { "kind": "text", "text": "SLOW", "tone": "warn" },
+              { "kind": "text", "text": "200", "tone": null },
+              { "kind": "text", "text": "912 ms", "tone": "warn" },
+              { "kind": "spark", "values": [120, 180, 240, 410, 650, 912], "max": null, "tone": "accent", "width": 10 },
+              { "kind": "text", "text": "https://api.example.com/healthz", "tone": "dim" } ] },
+          { "cells": [
+              { "kind": "text", "text": "db", "tone": null },
+              { "kind": "text", "text": "DOWN", "tone": "bad" },
+              { "kind": "text", "text": "-", "tone": "dim" },
+              { "kind": "text", "text": "-", "tone": "dim" },
+              { "kind": "spark", "values": [], "max": null, "tone": "accent", "width": 10 },
+              { "kind": "text", "text": "tcp://db.example.com:5432", "tone": "dim" } ],
+            "detail": "connection refused" }
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "name": "GPUs",
+      "type": "gpu",
+      "interval": 2,
+      "state": "demo",
+      "status": "DEMO (not configured)",
+      "message": "not configured",
+      "table": {
+        "header": "s: switch lane of the selected card",
+        "columns": ["CARD", "UTIL", "VRAM", "TEMP", "POWER", "10 MIN", "LANE"],
+        "rows": [
+          { "cells": [
+              { "kind": "text", "text": "GPU A (24 GB)", "tone": null },
+              { "kind": "bar", "value": 100, "max": 100, "text": "100%", "tone": "bad", "width": 8 },
+              { "kind": "bar", "value": 15.8, "max": 24, "text": "15.8/24G", "tone": "ok", "width": 8 },
+              { "kind": "text", "text": "71°C", "tone": "warn" },
+              { "kind": "text", "text": "290W", "tone": null },
+              { "kind": "spark", "values": [0, 10, 55, 100, 100, 96, 100, 100, 88, 100], "max": 100, "tone": "accent", "width": 10 },
+              { "kind": "text", "text": "train", "tone": "accent" } ],
+            "detail": "lane train · pid 7731 · driver 550.54", "key": "gpu0", "actions": [{ "key": "s", "title": "Switch lane: GPU 0", "warning": "1 process(es) on this card may be stopped", "options": [{ "id": "llm", "label": "LLM" }, { "id": "asr", "label": "ASR" }] }] },
+          { "cells": [
+              { "kind": "text", "text": "GPU B (16 GB)", "tone": null },
+              { "kind": "bar", "value": 0, "max": 100, "text": "0%", "tone": "ok", "width": 8 },
+              { "kind": "bar", "value": 0, "max": 0, "text": "0.0/0G", "tone": "ok", "width": 8 },
+              { "kind": "text", "text": "34°C", "tone": null },
+              { "kind": "text", "text": "12W", "tone": null },
+              { "kind": "spark", "values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "max": 100, "tone": "accent", "width": 10 },
+              { "kind": "text", "text": "none", "tone": "dim" } ],
+            "key": "gpu1" }
+        ]
+      }
+    },
+    {
+      "index": 5,
+      "name": "AI quotas",
+      "type": "ai-quotas",
+      "interval": 60,
+      "state": "demo",
+      "status": "DEMO (not configured)",
+      "message": "not configured",
+      "table": {
+        "header": "200 OK: 412 · 429: 3 · requests: 415",
+        "columns": ["ACCOUNT / MODEL", "WINDOW / REQS", "USED / SHARE"],
+        "rows": [
+          { "section": "Plan quotas" },
+          { "cells": [
+              { "kind": "text", "text": "Provider A", "tone": null },
+              { "kind": "text", "text": "5-hour", "tone": null },
+              { "kind": "bar", "value": 61, "max": 100, "text": "61%", "tone": "ok", "width": 16 } ],
+            "detail": "resets 11-06 21:00 UTC" },
+          { "cells": [
+              { "kind": "text", "text": "Provider A", "tone": null },
+              { "kind": "text", "text": "weekly", "tone": null },
+              { "kind": "bar", "value": 88, "max": 100, "text": "88%", "tone": "warn", "width": 16 } ],
+            "detail": "resets 11-09 05:00 UTC" },
+          { "section": "Requests, last 24 h" },
+          { "cells": [
+              { "kind": "text", "text": "model-large", "tone": null },
+              { "kind": "text", "text": "271", "tone": null },
+              { "kind": "bar", "value": 65, "max": 100, "text": "65%", "tone": "ok", "width": 16 } ] },
+          { "cells": [
+              { "kind": "text", "text": "model-small", "tone": null },
+              { "kind": "text", "text": "144", "tone": null },
+              { "kind": "bar", "value": 35, "max": 100, "text": "35%", "tone": "ok", "width": 16 } ] }
+        ]
+      }
+    }
+  ]
+}
